@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch
 import torch.nn as nn
 
@@ -46,7 +47,7 @@ def train(model, dataset):
 def train_with_momentum(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.001
+    learningRate = 0.01
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -88,7 +89,7 @@ def train_with_momentum(model, dataset, velocity):
 def train_with_NAG(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.001
+    learningRate = 0.01
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -143,6 +144,62 @@ def train_with_NAG(model, dataset, velocity):
 
         #     # Update attributes
         #     self.velocity[i] = velocity
+
+
+def train_mime(model, dataset, global_velocity):
+    ##### TRAINING HYPERPARAMETERS #####
+    epochs = 3
+    learningRate = 0.01
+    momentum = 0.9
+    #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
+    optimizer = optim.SGD(model.parameters(), lr=learningRate)
+    criterion = nn.NLLLoss()
+    ####################################
+
+    global_model = deepcopy(model)
+
+    model.train()
+    print("Training:")
+    for epoch in range(epochs):
+
+        epochLoss = 0
+        for input, target in tqdm(dataset):
+
+            # Reset such that only gradients that pertain
+            # to the current input are used
+            model.zero_grad()
+
+            # Forward
+            output = model(input)
+
+            # No need to shape target to one-hot encoding
+            loss = criterion(output, target)
+            loss.backward()
+            with torch.no_grad():
+                for name, param in model.named_parameters():
+                    if param.grad is not None: 
+                        # velocity[name] = momentum * velocity[name] + (1-momentum)*param.grad    #correct equation
+                        param.add_(-learningRate*(momentum*global_velocity[name].detach_() + param.grad))
+
+            epochLoss += loss.item()
+
+        epochLoss /= len(dataset)
+
+        print(f"EPOCH {epoch} LOSS: {epochLoss}")
+
+    #Compute full batch gradient based on server parameters
+    data, target = next(iter(dataset))
+    global_model.zero_grad()
+    output = global_model(data)
+    loss = criterion(output, target)
+    loss.backward()
+    gradients = {}
+    for name, param in global_model.named_parameters():
+        if param.grad is not None:
+            gradients[name] = param.grad.clone()
+    
+    return model, gradients
+
 
 
 #ORIGINAL TESTING CODE

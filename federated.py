@@ -8,16 +8,31 @@ import csv
 
 from dataset import mnist_dataset
 from model.layers import CNN, DNN
-from model.train import test, train, train_with_momentum, train_with_NAG
+from model.train import test, train, train_with_momentum, train_with_NAG, train_mime
 
 clientModels = []
 clientVelocities = []
 clientDistributions = []
 client_data_sizes = []
+clientGrads = []
 emnist = False
 
 clientModelsLock = Lock()
 start_time = time.time()
+
+clientNum = 5
+trainingRounds = 20
+momentum = 0.9
+
+#***************DATASETS CHOICE*******************
+trainSet = mnist_dataset.load_mnist_dataset(isTrainDataset=True)
+#trainSet = mnist_dataset.load_emnist_dataset(isTrainDataset=True)
+testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
+
+#*************IID/NON-IID SPLIT*******************
+#clientDatasets = mnist_dataset.split_client_datasets(trainSet, clientNum, trainingRounds)
+clientDatasets = mnist_dataset.split_non_iid_client_datasets(trainSet, clientNum, trainingRounds, emnist)
+testLoader = mnist_dataset.get_dataloader(testSet)
 
 def get_label_distribution(data_loader):
         label_counts = Counter()
@@ -73,6 +88,25 @@ def clientTraining_withLocalMomentum(serverModel, serverVelocity, clientDatasets
     clientVelocities.append(trainedClientVelocity)
     clientDistributions.append(clientdistribution)
     client_data_sizes.append(client_data_size)
+    clientModelsLock.release()
+
+    print(f"Client {client+1} done")
+
+def clientTraining_Mime(serverModel, serverVelocity, clientDatasets, client, round):
+    global clientModels
+    global client_data_sizes
+    global clientGrads
+    clientTrainingSet = clientDatasets[client][round]
+    client_data_size = len(clientDatasets[client][round])
+    trainLoader = mnist_dataset.get_dataloader(clientTrainingSet)
+    clientModel = deepcopy(serverModel)
+    
+    trainedClientModel, trainedClientGradients = train_mime(clientModel, trainLoader, serverVelocity)
+
+    clientModelsLock.acquire()
+    clientModels.append(trainedClientModel)
+    client_data_sizes.append(client_data_size)
+    clientGrads.append(trainedClientGradients)
     clientModelsLock.release()
 
     print(f"Client {client+1} done")
@@ -166,11 +200,27 @@ def fedWAN(clientModels,clientVelocities, clientDistributions, round, num_client
     return averagedModel, averagedVelocity
     
 
-def fedmom(clientModels):
-    #server momentum
-    return
+def fedmom(clientModels, serverModel):
+    global_params = {key: tensor.clone() for key, tensor in serverModel.items()}
+    weighted_diff = {key: torch.zeros_like(tensor) for key, tensor in serverModel.items()}
+    global_velocity = {key: torch.zeros_like(tensor) for key, tensor in serverModel.items()}
 
-def mime(clientModels):
+    for i in range(len(clientModels)):
+        for key in global_params.keys():
+            weighted_diff[key] += (global_params[key] - clientModels[i][key])
+    
+    global_velocity_earlier = deepcopy(global_velocity)
+    
+    for key in global_params.keys():
+        global_velocity[key] = global_params[key] + weighted_diff[key]
+        global_params[key] = global_velocity[key] - momentum * (global_velocity[key] - global_velocity_earlier[key])
+
+    serverModel.update(global_params)
+    
+    return serverModel
+
+
+def mime(clientModels, clientGrads, serverVelocity):
     print('len:',len(clientModels))
     averagedModel = deepcopy(clientModels[0])
     with torch.no_grad():
@@ -179,8 +229,17 @@ def mime(clientModels):
                 param1.data += param2.data
         for param in averagedModel.parameters():
             param.data /= len(clientModels)
-    return averagedModel
-    #server momentum
+
+    #server velocity
+    #Average model parameters
+    global_dict = averagedModel.state_dict()
+    avg_clients_grads = deepcopy(global_dict)
+    for key in global_dict.keys():
+        #Average full batch gradients wrt to server parameters for each client dataset
+        avg_clients_grads[key] = torch.stack([clientGrads[i][key].float() for i in range(len(clientGrads))], 0).mean(0)
+        serverVelocity[key] = (1-momentum)*avg_clients_grads[key] + momentum*serverVelocity[key]
+
+    return averagedModel, serverVelocity
 
 class federatedConfig:
     clientNum = 5
@@ -204,18 +263,8 @@ def federated(algo):
     global clientModels
     global clientVelocities
     global clientDistributions
+    global clientGrads
     config = federatedConfig()
-
-    #***************DATASETS CHOICE*******************
-    trainSet = mnist_dataset.load_mnist_dataset(isTrainDataset=True)
-    #trainSet = mnist_dataset.load_emnist_dataset(isTrainDataset=True)
-    testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
-
-    #*************IID/NON-IID SPLIT*******************
-    #clientDatasets = mnist_dataset.split_client_datasets(trainSet, config.clientNum, config.trainingRounds)
-    clientDatasets = mnist_dataset.split_non_iid_client_datasets(trainSet, config.clientNum, config.trainingRounds, emnist)
-
-    testLoader = mnist_dataset.get_dataloader(testSet)
 
     serverModel = DNN()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
@@ -226,6 +275,8 @@ def federated(algo):
         clientModels.clear()
         clientVelocities.clear()
         clientDistributions.clear()
+        client_data_sizes.clear()
+        clientGrads.clear()
         clientThreads = []
         for client in range(config.clientNum):
             a = 6
@@ -244,15 +295,20 @@ def federated(algo):
                     target=clientTraining_withLocalMomentum, 
                     args=(serverModel, serverVelocity, clientDatasets, client, round, True)
                 )
+            elif algo == "fedwan":
+                t = Thread(
+                    target=clientTraining_withLocalMomentum, 
+                    args=(serverModel, serverVelocity, clientDatasets, client, round, True)
+                )
             elif algo == "fedmom":
                 t = Thread(
-                    target=clientTraining_withLocalMomentum, #ADD
+                    target=clientTraining,
                     args=(serverModel, serverVelocity, clientDatasets, client, round, True)
                 )
             elif algo == "mime":
                 t = Thread(
-                    target=clientTraining_withLocalMomentum, #ADD
-                    args=(serverModel, serverVelocity, clientDatasets, client, round, True)
+                    target=clientTraining_Mime,
+                    args=(serverModel, serverVelocity, clientDatasets, client, round)
                 )
             else:
                 raise ValueError(f"Unknown algorithm: {algo}")
@@ -269,14 +325,14 @@ def federated(algo):
         
         if algo == "fedavg":
             serverModel = fedAvg(clientModels)
-        elif algo == "mfl":
+        elif algo == "mfl" or algo == "fednag":
             serverModel, serverVelocity = fedmomentum_NAG(clientModels, clientVelocities)
-        elif algo == "fednag":
+        elif algo == "fedwan":
             serverModel, serverVelocity = fedWAN(clientModels, clientVelocities, clientDistributions, round, config.clientNum)
         elif algo == "fedmom":
             serverModel = fedmom(clientModels)
         elif algo == "mime":
-            serverModel, serverVelocity = mime(clientModels, clientVelocities)
+            serverModel, serverVelocity = mime(clientModels, clientGrads, serverVelocity)
         else:
             raise ValueError(f"Unknown algorithm: {algo}")
 
@@ -299,5 +355,5 @@ if __name__ == "__main__":
     federated('mfl')
     federated('fednag')
     federated('fedwan')
-    federated('fedmom')
     federated('mime')
+    federated('fedmom')
