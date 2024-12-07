@@ -51,6 +51,49 @@ def split_client_datasets(dataset, clientNum, roundNum):
 
     return clientDatasets
 
+def split_client_datasets_non_iid(dataset, clientNum, roundNum):
+    total_samples = len(dataset)
+    if total_samples < clientNum * roundNum:
+        raise ValueError("Not enough samples in the dataset to distribute among all clients and rounds.")
+    
+    # Shuffle dataset indices once to ensure randomness
+    dataset_indices = list(range(total_samples))
+    random.shuffle(dataset_indices)
+    
+    # Calculate number of samples per round
+    samples_per_round = total_samples // roundNum
+    remaining_samples = total_samples % roundNum
+    
+    # Split dataset into rounds
+    round_indices = []
+    start = 0
+    for i in range(roundNum):
+        end = start + samples_per_round + (1 if i < remaining_samples else 0)
+        round_indices.append(dataset_indices[start:end])
+        start = end
+    
+    # Allocate data to clients within each round
+    clientDatasets = [[] for _ in range(clientNum)]
+    for round, indices in enumerate(round_indices):
+        random.shuffle(indices)  # Shuffle indices for the round
+        remaining_indices = indices.copy()
+        
+        for client in range(clientNum):
+            if client == clientNum - 1:
+                # Last client gets all remaining indices
+                client_data_indices = remaining_indices
+            else:
+                # Randomly decide the number of samples for the client in this round
+                max_samples = len(remaining_indices) // (clientNum - client)
+                num_samples = random.randint(1, max_samples)
+                client_data_indices = remaining_indices[:num_samples]
+                remaining_indices = remaining_indices[num_samples:]  # Update remaining indices
+            
+            clientDatasets[client].append(Subset(dataset, client_data_indices))
+            print(f'len(clientDatasets[{client}][{round}]): ', len(clientDatasets[client][round]))
+    
+    return clientDatasets
+
 
 def generate_random_class_distribution_mnist(clientNum, num_classes=10, total_samples_per_class={0: 5923,1: 6742,2: 5958,3: 6131,4: 5842,5: 5421,6: 5918,7: 6265,8: 5851,9: 5949}, min_samples_per_class=10, max_samples_per_class=2000):
     class_distributions = []

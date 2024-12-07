@@ -1,5 +1,5 @@
 from collections import Counter
-from copy import deepcopy
+from copy import copy, deepcopy
 from threading import Thread, Lock
 
 import torch
@@ -9,6 +9,7 @@ import csv
 from dataset import mnist_dataset
 from model.layers import CNN, DNN
 from model.train import test, train, train_with_momentum, train_with_NAG, train_mime
+from merger import merge
 
 clientModels = []
 clientVelocities = []
@@ -21,7 +22,7 @@ clientModelsLock = Lock()
 start_time = time.time()
 
 clientNum = 5
-trainingRounds = 20
+trainingRounds = 40
 momentum = 0.9
 
 #***************DATASETS CHOICE*******************
@@ -31,7 +32,7 @@ testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
 
 #*************IID/NON-IID SPLIT*******************
 #clientDatasets = mnist_dataset.split_client_datasets(trainSet, clientNum, trainingRounds)
-clientDatasets = mnist_dataset.split_non_iid_client_datasets(trainSet, clientNum, trainingRounds, emnist)
+clientDatasets = mnist_dataset.split_client_datasets_non_iid(trainSet, clientNum, trainingRounds)
 testLoader = mnist_dataset.get_dataloader(testSet)
 
 def get_label_distribution(data_loader):
@@ -200,24 +201,25 @@ def fedWAN(clientModels,clientVelocities, clientDistributions, round, num_client
     return averagedModel, averagedVelocity
     
 
-def fedmom(clientModels, serverModel):
-    global_params = {key: tensor.clone() for key, tensor in serverModel.items()}
-    weighted_diff = {key: torch.zeros_like(tensor) for key, tensor in serverModel.items()}
-    global_velocity = {key: torch.zeros_like(tensor) for key, tensor in serverModel.items()}
+def fedmom(clientModels, serverModel, globalVelocity):
+    global_params = serverModel.state_dict()
+    weighted_diff = {key: torch.zeros_like(tensor) for key, tensor in global_params.items()}
+    global_velocity = {key: torch.zeros_like(tensor) for key, tensor in global_params.items()}
 
-    for i in range(len(clientModels)):
+    for clientModel in clientModels:
+        client_state = clientModel.state_dict()
         for key in global_params.keys():
-            weighted_diff[key] += (global_params[key] - clientModels[i][key])
-    
-    global_velocity_earlier = deepcopy(global_velocity)
+            weighted_diff[key] += (global_params[key] - client_state[key])
     
     for key in global_params.keys():
-        global_velocity[key] = global_params[key] + weighted_diff[key]
-        global_params[key] = global_velocity[key] - momentum * (global_velocity[key] - global_velocity_earlier[key])
+        # global_velocity[key] = global_params[key] - weighted_diff[key]
+        # global_params[key] = global_velocity[key] + momentum * (global_velocity[key] - globalVelocity[key])
+        global_velocity[key] = momentum * global_velocity[key] - 0.6 * weighted_diff[key]
+        global_params[key] = global_params[key] + global_velocity[key]
 
-    serverModel.update(global_params)
+    serverModel.load_state_dict(global_params)
     
-    return serverModel
+    return serverModel, global_velocity
 
 
 def mime(clientModels, clientGrads, serverVelocity):
@@ -243,7 +245,7 @@ def mime(clientModels, clientGrads, serverVelocity):
 
 class federatedConfig:
     clientNum = 5
-    trainingRounds = 20
+    trainingRounds = 40
 
 def print_velocities(velocity, label="Velocity"):
     print(f"{label}:")
@@ -258,7 +260,7 @@ def federated(algo):
     filename = f'federated_metrics_{algo}_non_iid_lr0.01.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["Round", "Time", "Accuracy", "Loss"])
+        writer.writerow([f"time_{algo}", "accuracy_{algo}", "loss_{algo}"])
 
     global clientModels
     global clientVelocities
@@ -266,7 +268,7 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = DNN()
+    serverModel = CNN()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -303,7 +305,7 @@ def federated(algo):
             elif algo == "fedmom":
                 t = Thread(
                     target=clientTraining,
-                    args=(serverModel, serverVelocity, clientDatasets, client, round, True)
+                    args=(serverModel, clientDatasets, client, round)
                 )
             elif algo == "mime":
                 t = Thread(
@@ -330,7 +332,7 @@ def federated(algo):
         elif algo == "fedwan":
             serverModel, serverVelocity = fedWAN(clientModels, clientVelocities, clientDistributions, round, config.clientNum)
         elif algo == "fedmom":
-            serverModel = fedmom(clientModels)
+            serverModel, serverVelocity = fedmom(clientModels, serverModel, serverVelocity)
         elif algo == "mime":
             serverModel, serverVelocity = mime(clientModels, clientGrads, serverVelocity)
         else:
@@ -357,3 +359,4 @@ if __name__ == "__main__":
     federated('fedwan')
     federated('mime')
     federated('fedmom')
+    merge()
