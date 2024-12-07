@@ -11,7 +11,7 @@ def train(model, dataset):
 
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.01
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -47,7 +47,7 @@ def train(model, dataset):
 def train_with_momentum(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.01
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -89,7 +89,7 @@ def train_with_momentum(model, dataset, velocity):
 def train_with_NAG(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.01
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -149,7 +149,7 @@ def train_with_NAG(model, dataset, velocity):
 def train_mime(model, dataset, global_velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.01
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)

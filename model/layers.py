@@ -35,3 +35,13 @@ class DNN(nn.Module):
         #x = F.relu(self.fc3(x))
         x = self.fc3(x)
         return F.log_softmax(x, dim=1)
+    
+class LogisticRegression(nn.Module):
+    def __init__(self):
+        super(LogisticRegression, self).__init__()
+        self.fc = nn.Linear(28*28, 10)
+
+    def forward(self, x):
+        x = x.view(-1, 28*28)
+        x = self.fc(x)
+        return F.log_softmax(x, dim=1)

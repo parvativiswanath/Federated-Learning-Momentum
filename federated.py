@@ -7,7 +7,7 @@ import time
 import csv
 
 from dataset import mnist_dataset
-from model.layers import CNN, DNN
+from model.layers import CNN, DNN, LogisticRegression
 from model.train import test, train, train_with_momentum, train_with_NAG, train_mime
 from merger import merge
 
@@ -22,7 +22,7 @@ clientModelsLock = Lock()
 start_time = time.time()
 
 clientNum = 5
-trainingRounds = 40
+trainingRounds = 30
 momentum = 0.9
 
 #***************DATASETS CHOICE*******************
@@ -32,7 +32,8 @@ testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
 
 #*************IID/NON-IID SPLIT*******************
 #clientDatasets = mnist_dataset.split_client_datasets(trainSet, clientNum, trainingRounds)
-clientDatasets = mnist_dataset.split_client_datasets_non_iid(trainSet, clientNum, trainingRounds)
+# clientDatasets = mnist_dataset.split_client_datasets_non_iid(trainSet, clientNum, trainingRounds)
+clientDatasets = mnist_dataset.test2(trainSet, clientNum)
 testLoader = mnist_dataset.get_dataloader(testSet)
 
 def get_label_distribution(data_loader):
@@ -59,7 +60,8 @@ def calculate_kl_divergence(client_distribution, global_distribution):
 
 def clientTraining(serverModel, clientDatasets, client, round):
     global clientModels
-    clientTrainingSet = clientDatasets[client][round]
+    #clientTrainingSet = clientDatasets[client][round]
+    clientTrainingSet = clientDatasets[client]
     trainLoader = mnist_dataset.get_dataloader(clientTrainingSet)
     clientModel = deepcopy(serverModel)
     trainedClientModel = train(clientModel, trainLoader)
@@ -74,8 +76,9 @@ def clientTraining_withLocalMomentum(serverModel, serverVelocity, clientDatasets
     global clientVelocities
     global clientDistributions
     global client_data_sizes
-    clientTrainingSet = clientDatasets[client][round]
-    client_data_size = len(clientDatasets[client][round])
+    #clientTrainingSet = clientDatasets[client][round]
+    clientTrainingSet = clientDatasets[client]
+    client_data_size = len(clientDatasets[client])
     trainLoader = mnist_dataset.get_dataloader(clientTrainingSet)
     clientModel = deepcopy(serverModel)
     clientVelocity = deepcopy(serverVelocity)
@@ -97,8 +100,9 @@ def clientTraining_Mime(serverModel, serverVelocity, clientDatasets, client, rou
     global clientModels
     global client_data_sizes
     global clientGrads
-    clientTrainingSet = clientDatasets[client][round]
-    client_data_size = len(clientDatasets[client][round])
+    #clientTrainingSet = clientDatasets[client][round]
+    clientTrainingSet = clientDatasets[client]
+    client_data_size = len(clientDatasets[client])
     trainLoader = mnist_dataset.get_dataloader(clientTrainingSet)
     clientModel = deepcopy(serverModel)
     
@@ -159,12 +163,14 @@ def fedWAN(clientModels,clientVelocities, clientDistributions, round, num_client
             if label not in global_distribution:
                 global_distribution[label] = 0
             global_distribution[label] += count
+
+    
+    print('GLOBAL DISTRIBUTION:')
+    print(global_distribution)
     # Normalize the distribution
     for label, count in global_distribution.items():
         global_distribution[label] /= total_size
     
-    print('GLOBAL DISTRIBUTION:')
-    print(global_distribution)
     #Initialise weights
     weights = torch.zeros(len(clientDistributions), dtype=torch.float)
 
@@ -245,7 +251,7 @@ def mime(clientModels, clientGrads, serverVelocity):
 
 class federatedConfig:
     clientNum = 5
-    trainingRounds = 40
+    trainingRounds = 30
 
 def print_velocities(velocity, label="Velocity"):
     print(f"{label}:")
@@ -257,10 +263,10 @@ def federated(algo):
     # Open (or create) the CSV file and write headers
     #*********************POINT TO CHANGE****************
     #filename = 'federated_metrics_fedwan_non_iid_lr0.01.csv'
-    filename = f'federated_metrics_{algo}_non_iid_lr0.01.csv'
+    filename = f'federated_metrics_{algo}_non_iid_lr0.001.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow([f"time_{algo}", "accuracy_{algo}", "loss_{algo}"])
+        writer.writerow([f"time_{algo}", f"accuracy_{algo}", f"loss_{algo}"])
 
     global clientModels
     global clientVelocities
@@ -268,7 +274,7 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = CNN()
+    serverModel = DNN()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -355,8 +361,8 @@ if __name__ == "__main__":
     start_time = time.time()
     federated('fedavg')
     federated('mfl')
-    federated('fednag')
     federated('fedwan')
+    federated('fednag')
     federated('mime')
     federated('fedmom')
     merge()

@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 import os
 import random
 
@@ -110,21 +110,6 @@ def generate_random_class_distribution_mnist(clientNum, num_classes=10, total_sa
     
     return class_distributions
 
-def generate_random_class_distribution_mnist(clientNum, num_classes=10, total_samples_per_class={0: 5923,1: 6742,2: 5958,3: 6131,4: 5842,5: 5421,6: 5918,7: 6265,8: 5851,9: 5949}, min_samples_per_class=10, max_samples_per_class=2000):
-    class_distributions = []
-    
-    for _ in range(clientNum):
-        client_dist = {}
-        for class_label in range(num_classes):
-            max_samples = min(max_samples_per_class, total_samples_per_class[class_label])
-            if max_samples < min_samples_per_class:
-                raise ValueError(f"Not enough samples available for class {class_label} to meet constraints.")
-            client_dist[class_label] = random.randint(min_samples_per_class, max_samples)
-            total_samples_per_class[class_label] -= client_dist[class_label]
-        class_distributions.append(client_dist)
-    
-    return class_distributions
-
 def generate_random_class_distribution_emnist(
     clientNum, 
     num_classes=62, 
@@ -195,6 +180,92 @@ def split_non_iid_client_datasets(dataset, clientNum, roundNum,emnist):
             client_datasets[client_id].append(Subset(dataset, round_indices))
 
     return client_datasets
+
+def test(dataset, clientNum, emnist=False):
+    class_distributions = generate_random_class_distribution_mnist(clientNum)
+    
+    print('Class distributions for all clients are - ')
+    print(class_distributions)
+    
+    data_by_class = defaultdict(list)
+    for idx, (_, label) in enumerate(dataset):
+        data_by_class[label].append(idx)
+
+    for label in data_by_class:
+        random.shuffle(data_by_class[label])
+
+    client_data = [[] for _ in range(clientNum)]
+    
+    for client_id, class_dist in enumerate(class_distributions):
+        for class_label, count in class_dist.items():
+            allocated_samples = data_by_class[class_label][:count]
+            client_data[client_id].extend(allocated_samples)
+            data_by_class[class_label] = data_by_class[class_label][count:]
+
+    client_datasets = [[] for _ in range(clientNum)]
+    for client_id in range(clientNum):
+        client_samples = client_data[client_id]
+        random.shuffle(client_samples)
+        client_datasets[client_id] = Subset(dataset, client_samples)
+
+    return client_datasets
+
+def test2(dataset,clientNum):
+    client_classes = {
+    i+1: random.sample(range(10), i+6) for i in range(clientNum)}
+
+    # Initialize client datasets
+    client_datasets = {client: [] for client in client_classes}
+    extra_dataset = {}
+
+    # Collect indices for each class
+    class_indices = defaultdict(list)
+    for idx, (_, target) in enumerate(dataset):
+        class_indices[target].append(idx)
+
+    extra_samples_per_class = 50
+
+    for client, classes in client_classes.items():
+        extra_samples = []
+        for cls, indices in class_indices.items():
+            if cls not in classes:  # Only add extra data from classes not assigned to this client
+                extra_samples.extend(random.sample(indices, min(extra_samples_per_class, len(indices))))
+
+        # Shuffle and add to the client's dataset
+        random.shuffle(extra_samples)
+        client_datasets[client].extend(extra_samples)
+
+    # Allocate samples to clients
+    subset_size_per_class = 5000
+    for client, classes in client_classes.items():
+        for cls in classes:
+            client_datasets[client].extend(class_indices[cls])
+
+    subset_size = 5000
+    for client in client_datasets:
+        random.shuffle(client_datasets[client])
+        client_datasets[client] = client_datasets[client][:subset_size]
+
+    # Create final client datasets
+    client_datasets = [Subset(dataset, indices)
+                    for indices in client_datasets.values()]
+    for i, client_dataset in enumerate(client_datasets):
+        print(f"Client {i + 1} size: {len(client_dataset)}")
+
+    # Analyze data distribution for each client
+    for i, client_dataset in enumerate(client_datasets):
+        # Extract labels for the current client's dataset
+        labels = [dataset[idx][1] for idx in client_dataset.indices]
+        label_counts = Counter(labels)
+
+        # Display the class distribution
+        print(f"Client {i + 1} Class Distribution:")
+        for cls, count in sorted(label_counts.items()):
+            print(f"  Class {cls}: {count} samples")
+        print("-" * 30)
+
+    return client_datasets
+
 
 
 def get_dataloader(dataset, batchSize=64):
