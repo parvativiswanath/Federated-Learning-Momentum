@@ -18,7 +18,7 @@ def merge():
 
     # Process each algorithm's CSV file
     for algo in algorithms:
-        input_file = f'federated_metrics_{algo}_non_iid_lr0.01.csv'
+        input_file = f'federated_metrics_{algo}_non_iid_lr0.001.csv'
         if os.path.exists(input_file):
             # Read the algorithm-specific file
             algo_df = pd.read_csv(input_file)

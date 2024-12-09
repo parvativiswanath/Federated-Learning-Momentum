@@ -21,6 +21,20 @@ def load_mnist_dataset(isTrainDataset=True) -> Dataset:
     )
     return mnistDataset
 
+def load_cifar10_dataset(isTrainDataset=True) -> Dataset:
+    cifar10Dataset = datasets.CIFAR10(
+        os.path.dirname(os.path.realpath(__file__)) + "/data",
+        train=isTrainDataset,
+        download=True,
+        transform=torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261)),
+            ]
+        ),
+    )
+    return cifar10Dataset
+
 def load_emnist_dataset(isTrainDataset=True) -> Dataset:
     emnistDataset = datasets.EMNIST(
         os.path.dirname(os.path.realpath(__file__)) + "/data",
@@ -212,7 +226,9 @@ def test(dataset, clientNum, emnist=False):
 
 def test2(dataset,clientNum):
     client_classes = {
-    i+1: random.sample(range(10), i+6) for i in range(clientNum)}
+    i+1: random.sample(range(10), i+6) for i in range(clientNum)
+    #i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
+    }
 
     # Initialize client datasets
     client_datasets = {client: [] for client in client_classes}
@@ -236,7 +252,7 @@ def test2(dataset,clientNum):
         client_datasets[client].extend(extra_samples)
 
     # Allocate samples to clients
-    subset_size_per_class = 5000
+    subset_size_per_class = 8000
     for client, classes in client_classes.items():
         for cls in classes:
             client_datasets[client].extend(class_indices[cls])

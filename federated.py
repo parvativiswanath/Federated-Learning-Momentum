@@ -22,13 +22,15 @@ clientModelsLock = Lock()
 start_time = time.time()
 
 clientNum = 5
-trainingRounds = 30
+trainingRounds = 40
 momentum = 0.9
 
 #***************DATASETS CHOICE*******************
-trainSet = mnist_dataset.load_mnist_dataset(isTrainDataset=True)
+#trainSet = mnist_dataset.load_mnist_dataset(isTrainDataset=True)
+trainSet = mnist_dataset.load_cifar10_dataset(isTrainDataset=True)
 #trainSet = mnist_dataset.load_emnist_dataset(isTrainDataset=True)
-testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
+#testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
+testSet = mnist_dataset.load_cifar10_dataset(isTrainDataset=False)
 
 #*************IID/NON-IID SPLIT*******************
 #clientDatasets = mnist_dataset.split_client_datasets(trainSet, clientNum, trainingRounds)
@@ -220,7 +222,7 @@ def fedmom(clientModels, serverModel, globalVelocity):
     for key in global_params.keys():
         # global_velocity[key] = global_params[key] - weighted_diff[key]
         # global_params[key] = global_velocity[key] + momentum * (global_velocity[key] - globalVelocity[key])
-        global_velocity[key] = momentum * global_velocity[key] - 0.6 * weighted_diff[key]
+        global_velocity[key] = momentum * global_velocity[key] - 0.4 * weighted_diff[key]
         global_params[key] = global_params[key] + global_velocity[key]
 
     serverModel.load_state_dict(global_params)
@@ -251,7 +253,7 @@ def mime(clientModels, clientGrads, serverVelocity):
 
 class federatedConfig:
     clientNum = 5
-    trainingRounds = 30
+    trainingRounds = 40
 
 def print_velocities(velocity, label="Velocity"):
     print(f"{label}:")
@@ -274,7 +276,7 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = DNN()
+    serverModel = CNN()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -359,7 +361,7 @@ def federated(algo):
 
 if __name__ == "__main__":
     start_time = time.time()
-    federated('fedavg')
+    #federated('fedavg')
     federated('mfl')
     federated('fedwan')
     federated('fednag')
