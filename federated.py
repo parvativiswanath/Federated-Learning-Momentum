@@ -7,7 +7,7 @@ import time
 import csv
 
 from dataset import mnist_dataset
-from model.layers import CNN, DNN, LogisticRegression
+from model.layers import CNN, DNN, LogisticRegression, VGG16
 from model.train import test, train, train_with_momentum, train_with_NAG, train_mime
 from merger import merge
 
@@ -22,7 +22,7 @@ clientModelsLock = Lock()
 start_time = time.time()
 
 clientNum = 5
-trainingRounds = 40
+trainingRounds = 20
 momentum = 0.9
 
 #***************DATASETS CHOICE*******************
@@ -253,7 +253,7 @@ def mime(clientModels, clientGrads, serverVelocity):
 
 class federatedConfig:
     clientNum = 5
-    trainingRounds = 40
+    trainingRounds = 20
 
 def print_velocities(velocity, label="Velocity"):
     print(f"{label}:")
@@ -265,7 +265,7 @@ def federated(algo):
     # Open (or create) the CSV file and write headers
     #*********************POINT TO CHANGE****************
     #filename = 'federated_metrics_fedwan_non_iid_lr0.01.csv'
-    filename = f'federated_metrics_{algo}_non_iid_lr0.001.csv'
+    filename = f'federated_metrics_{algo}_non_iid.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow([f"time_{algo}", f"accuracy_{algo}", f"loss_{algo}"])
@@ -276,7 +276,7 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = CNN()
+    serverModel = DNN()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -361,7 +361,8 @@ def federated(algo):
 
 if __name__ == "__main__":
     start_time = time.time()
-    #federated('fedavg')
+
+    federated('fedavg')
     federated('mfl')
     federated('fedwan')
     federated('fednag')
