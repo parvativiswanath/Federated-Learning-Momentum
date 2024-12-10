@@ -1,6 +1,7 @@
 from collections import Counter
 from copy import copy, deepcopy
 from threading import Thread, Lock
+from torchvision import models
 
 import torch
 import time
@@ -26,9 +27,9 @@ trainingRounds = 30
 momentum = 0.9
 
 #***************DATASETS CHOICE*******************
-trainSet = mnist_dataset.load_mnist_dataset(isTrainDataset=True)
+trainSet = mnist_dataset.load_cifar10_dataset(isTrainDataset=True)
 #trainSet = mnist_dataset.load_emnist_dataset(isTrainDataset=True)
-testSet = mnist_dataset.load_mnist_dataset(isTrainDataset=False)
+testSet = mnist_dataset.load_cifar10_dataset(isTrainDataset=False)
 
 #*************IID/NON-IID SPLIT*******************
 #clientDatasets = mnist_dataset.split_client_datasets(trainSet, clientNum, trainingRounds)
@@ -259,10 +260,18 @@ def print_velocities(velocity, label="Velocity"):
         print(f" - {name}: shape={tensor.shape}, size={tensor.numel()}")
     print("=" * 50)
 
+import torch
+import torch.nn as nn
+import torchvision.models as models
+import torchvision.transforms as transforms
+from torchvision import datasets
+from threading import Thread
+import csv
+import time
+
+# Assuming DNN is replaced with VGG16 and testLoader is already defined
 def federated(algo):
     # Open (or create) the CSV file and write headers
-    #*********************POINT TO CHANGE****************
-    #filename = 'federated_metrics_fedwan_non_iid_lr0.01.csv'
     filename = f'federated_metrics_{algo}_non_iid_lr0.001.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
@@ -274,7 +283,10 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = DNN()
+    # Load pre-trained VGG16 and modify the classifier for CIFAR-10
+    serverModel = models.vgg16(pretrained=True)
+    serverModel.classifier[6] = nn.Linear(4096, 10)  # Adjust final layer for 10 classes
+
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -287,7 +299,6 @@ def federated(algo):
         clientGrads.clear()
         clientThreads = []
         for client in range(config.clientNum):
-            a = 6
             if algo == "fedavg":
                 t = Thread(
                     target=clientTraining, 
@@ -324,13 +335,13 @@ def federated(algo):
             t.start()
             clientThreads.append(t)
 
-
         for t in clientThreads:
             t.join()
 
         print('printing server model')
         print(serverModel)  
         
+        # Update the server model based on the selected algorithm
         if algo == "fedavg":
             serverModel = fedAvg(clientModels)
         elif algo == "mfl" or algo == "fednag":
@@ -344,12 +355,12 @@ def federated(algo):
         else:
             raise ValueError(f"Unknown algorithm: {algo}")
 
-
+        # Evaluate the updated model
         testAcc, testLoss = test(serverModel, testLoader)
         print(f"Round {round+1} done\tAccuracy: {testAcc}\tLoss: {testLoss}")
         curr_time = time.time() - start_time
 
-         # Append the results to the CSV file
+        # Append the results to the CSV file
         with open(filename, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([round + 1, curr_time, testAcc, testLoss])

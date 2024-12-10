@@ -21,6 +21,28 @@ def load_mnist_dataset(isTrainDataset=True) -> Dataset:
     )
     return mnistDataset
 
+import torchvision
+from torchvision import datasets, transforms
+import os
+
+def load_cifar10_dataset(isTrainDataset=True) -> datasets.CIFAR10:
+    # Define CIFAR-10 transformations
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),  # Resize to match input size for VGG16
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Normalize to [-1, 1] range
+    ])
+
+    # Load the CIFAR-10 dataset
+    cifar10Dataset = datasets.CIFAR10(
+        root=os.path.join(os.path.dirname(os.path.realpath(__file__)), "data"),
+        train=isTrainDataset,
+        download=True,
+        transform=transform
+    )
+    return cifar10Dataset
+
+
 def load_emnist_dataset(isTrainDataset=True) -> Dataset:
     emnistDataset = datasets.EMNIST(
         os.path.dirname(os.path.realpath(__file__)) + "/data",
