@@ -226,8 +226,8 @@ def test(dataset, clientNum, emnist=False):
 
 def test2(dataset,clientNum):
     client_classes = {
-    i+1: random.sample(range(10), i+6) for i in range(clientNum)
-    #i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
+    #i+1: random.sample(range(10), i+6) for i in range(clientNum)
+    i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
     }
 
     # Initialize client datasets
@@ -252,12 +252,12 @@ def test2(dataset,clientNum):
         client_datasets[client].extend(extra_samples)
 
     # Allocate samples to clients
-    subset_size_per_class = 8000
+    subset_size_per_class = 5000
     for client, classes in client_classes.items():
         for cls in classes:
             client_datasets[client].extend(class_indices[cls])
 
-    subset_size = 5000
+    subset_size = 8000
     for client in client_datasets:
         random.shuffle(client_datasets[client])
         client_datasets[client] = client_datasets[client][:subset_size]

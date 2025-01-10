@@ -12,7 +12,7 @@ def train(model, dataset):
 
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.0001
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -48,7 +48,7 @@ def train(model, dataset):
 def train_with_momentum(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.0001
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -68,8 +68,9 @@ def train_with_momentum(model, dataset, velocity):
 
             # Forward
             output = model(input)
-
+            #print(f"Input shape: {input.shape}, Target shape: {target.shape}")
             # No need to shape target to one-hot encoding
+            #print(f"Model output shape: {output.shape}, Target shape: {target.shape}")
             loss = criterion(output, target)
             loss.backward()
             with torch.no_grad():
@@ -89,8 +90,8 @@ def train_with_momentum(model, dataset, velocity):
 
 def train_with_NAG(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
-    epochs = 3
-    learningRate = 0.0001
+    epochs = 15
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
@@ -150,7 +151,7 @@ def train_with_NAG(model, dataset, velocity):
 def train_mime(model, dataset, global_velocity):
     ##### TRAINING HYPERPARAMETERS #####
     epochs = 3
-    learningRate = 0.0001
+    learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
     optimizer = optim.SGD(model.parameters(), lr=learningRate)
