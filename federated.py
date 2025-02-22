@@ -22,7 +22,7 @@ clientModelsLock = Lock()
 start_time = time.time()
 
 clientNum = 5
-trainingRounds = 5
+trainingRounds = 20
 momentum = 0.9
 
 #***************DATASETS CHOICE*******************
@@ -262,7 +262,7 @@ def mime(clientModels, clientGrads, serverVelocity):
 
 class federatedConfig:
     clientNum = 5
-    trainingRounds = 40
+    trainingRounds = 15
 
 def print_velocities(velocity, label="Velocity"):
     print(f"{label}:")
@@ -274,7 +274,7 @@ def federated(algo):
     # Open (or create) the CSV file and write headers
     #*********************POINT TO CHANGE****************
     #filename = 'federated_metrics_fedwan_non_iid_lr0.01.csv'
-    filename = f'federated_metrics_{algo}_epochs_test.csv'
+    filename = f'federated_metrics_cnn{algo}_test1.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow([f"time_{algo}", f"accuracy_{algo}", f"loss_{algo}"])
@@ -285,7 +285,7 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = CNN()
+    serverModel = LogisticRegression()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -361,6 +361,7 @@ def federated(algo):
         testAcc, testLoss = test(serverModel, testLoader)
         print(f"Round {round+1} done\tAccuracy: {testAcc}\tLoss: {testLoss}")
         curr_time = time.time() - start_time
+        print('start_time: ',start_time,' curr time: ',time.time())
 
          # Append the results to the CSV file
         with open(filename, mode='a', newline='') as file:
@@ -374,7 +375,7 @@ if __name__ == "__main__":
     start_time = time.time()
     #federated('fedavg')
     federated('fedwan')
-    # federated('fednag')
+    #federated('fednag')
     #federated('mfl')
     #federated('mime')
     #federated('fedmom')

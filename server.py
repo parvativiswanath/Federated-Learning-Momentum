@@ -1,3 +1,4 @@
+from copy import deepcopy
 from threading import Event, Lock
 import zipfile
 import torch
@@ -18,19 +19,21 @@ app = Flask(__name__)
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.fc1 = nn.Linear(28*28, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 10)
+        self.fc1 = nn.Linear(5, 10)
+        self.fc2 = nn.Linear(10, 5)
+        self.fc3 = nn.Linear(5, 3)
 
     def forward(self, x):
-        x = x.view(-1, 28*28)
+        #x = x.view(-1, 28*28)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
     
 global_model = Net()
-test_loader = DataLoader(datasets.MNIST('../data', train=False, download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])), batch_size=1000, shuffle=True)
+print('Global Model')
+print(global_model)
+#test_loader = DataLoader(datasets.MNIST('../data', train=False, download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])), batch_size=1000, shuffle=True)
 criterion = nn.CrossEntropyLoss()
 global_velocity = {name:torch.zeros_like(param) for name,param in global_model.named_parameters()}
 #averaging_in_progress = False
@@ -43,6 +46,9 @@ event = Event()
 # Temporary storage for model parameters from clients
 client_models = []
 client_velocities = []
+client_distributions = []
+
+num_clients = 2
 
 
 # @app.route('/upload', methods=['POST'])
@@ -101,35 +107,42 @@ client_velocities = []
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    global client_models, client_velocities, global_model, rnd
+    global client_models, client_velocities, client_distributions,global_model, rnd
 
     # Receive the files
     file1 = request.files['file1']
     file2 = request.files['file2']
+    file3 = request.files['file3']
 
     print('client files received')
     # Save the files locally
     client_model_path = 'client_model.pth'
     client_velocity_path = 'client_velocity.pth'
+    client_distribution_path = 'client_distribution.pth'
     file1.save(client_model_path)
     file2.save(client_velocity_path)
+    file3.save(client_distribution_path)
 
     # Load the parameters from the client model and velocity
     client_model = torch.load(client_model_path)
     client_velocity = torch.load(client_velocity_path)
+    client_distribution = torch.load(client_distribution_path)
+    print('client distribution is: ',client_distribution)
 
     with lock:
         # Store the client model and velocity
         client_models.append(client_model)
         client_velocities.append(client_velocity)
+        client_distributions.append(client_distribution)
         print('Client model and velocity appended')
 
         # Perform averaging if enough clients have uploaded models
-        if len(client_models) >= 3:  
+        if len(client_models) >= num_clients:  
             print('Averaging models and velocities')
             
             # Perform FedAvg for models
-            average_model_parameters(global_model, client_models)
+            average_model_parameters_with_weights(global_model, client_models, client_distributions)
+            #average_model_parameters(global_model, client_models)
 
             # Average velocities 
             for velocity in client_velocities[1:]:
@@ -140,11 +153,12 @@ def upload_file():
 
             print(f'\nROUND {rnd}')
             rnd += 1
-            test(global_model, test_loader)  
+            #test(global_model, test_loader)  
             
             # Clear client data for the next round
             client_models = []
             client_velocities = []
+            client_distributions = []
 
             # Save the updated model parameters and velocity
             updated_model_path = 'updated_model_params.pth'
@@ -168,7 +182,7 @@ def upload_file():
             return send_file(zip_path, as_attachment=True)
 
     # If the condition is still not met, wait for more uploads
-    if len(client_models) < 3:
+    if len(client_models) < num_clients:
         event.wait()
 
     print('sending response as zip file')
@@ -191,6 +205,82 @@ def average_model_parameters(global_model, client_models):
     # Update the global model with the new averaged parameters
     global_model.load_state_dict(model_state_dict)
     
+
+def calculate_kl_divergence(client_distribution, global_distribution):
+        kl_divergence = 0.0
+        for label, count in client_distribution.items():
+            #p = torch.tensor(count / sum(client_distribution.values()))
+            p = torch.tensor(count)
+            q = global_distribution[label]
+            if p is not None and q is not None:
+                kl_divergence += p * torch.log(p / q)
+        return kl_divergence
+
+def average_model_parameters_with_weights(global_model,client_models,client_distributions):
+    # averagedModel = deepcopy(global_model)
+    model_state_dict = global_model.state_dict()
+    #model_state_dict = global_model.parameters()
+
+    # global client_data_sizes
+    # print('client_data_sizes: ',client_data_sizes)
+    print('CLIENT DISTRIBUTIONS:')
+    print(client_distributions)
+    total_size = 800 * num_clients
+    global_distribution = {}
+    for distribution in client_distributions:
+        for label, count in distribution.items():
+            if label not in global_distribution:
+                global_distribution[label] = 800
+            #global_distribution[label] += count
+
+    
+    print('GLOBAL DISTRIBUTION:')
+    print(global_distribution)
+    # Normalize the distribution
+    for label, count in global_distribution.items():
+        global_distribution[label] /= total_size
+    
+    #Initialise weights
+    weights = torch.zeros(len(client_distributions), dtype=torch.float)
+
+    # Calculate weights
+    for client in range(len(client_distributions)):
+        print("client: ",client)
+        print("client_distributions: ",client_distributions[client])
+        kli = calculate_kl_divergence(client_distributions[client], global_distribution)
+        print("kli: ",kli)
+        weights[client] = 1/kli
+    print('weights before normalizing: ', weights)
+    total_weight = weights.sum()
+    for client in range(len(client_distributions)):
+        weights[client] = weights[client] / total_weight
+    print('weights for aggregation: ', weights)
+
+    # with torch.no_grad():
+    #     # Initialize model parameters to zero
+    #     for param in model_state_dict:
+    #         param.data.zero_()
+        
+    #     # Weighted aggregation of models
+    #     for model, weight in zip(client_models, weights):
+    #         for param_avg, param_client in zip(model_state_dict, model.parameters()):
+    #             param_avg.data += weight * param_client.data
+
+    # global_model.load_state_dict(model_state_dict)
+
+    with torch.no_grad():
+        # Initialize model parameters to zero
+        # for param_name in model_state_dict:
+        #     model_state_dict[param_name] = 0
+        
+        for param_name in model_state_dict:
+            averaged_param = 0
+            for client_model,weight in zip(client_models,weights):
+                averaged_param += weight * client_model[param_name]
+
+            model_state_dict[param_name] = averaged_param
+
+    global_model.load_state_dict(model_state_dict)
     
 # Test the global model
 def test(global_model, test_loader):

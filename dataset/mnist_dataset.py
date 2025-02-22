@@ -225,9 +225,13 @@ def test(dataset, clientNum, emnist=False):
     return client_datasets
 
 def test2(dataset,clientNum):
+    # client_classes = {
+    # #i+1: random.sample(range(10), i+6) for i in range(clientNum)
+    # i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
+    # }
+
     client_classes = {
-    #i+1: random.sample(range(10), i+6) for i in range(clientNum)
-    i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
+    i+1: random.sample(range(10), (i+1)*2) for i in reversed(range(clientNum))
     }
 
     # Initialize client datasets

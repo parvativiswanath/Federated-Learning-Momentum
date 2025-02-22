@@ -90,7 +90,7 @@ def train_with_momentum(model, dataset, velocity):
 
 def train_with_NAG(model, dataset, velocity):
     ##### TRAINING HYPERPARAMETERS #####
-    epochs = 15
+    epochs = 3
     learningRate = 0.001
     momentum = 0.9
     #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
