@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch import optim
 
 from tqdm import tqdm
-
+from adan import Adan
 
 
 def train(model, dataset):
@@ -202,19 +202,31 @@ def train_mime(model, dataset, global_velocity):
     
     return model, gradients
 
+def train_with_adan(model, dataset, cli_velocity):
+    epochs = 3
+    learningRate = 0.001
+    betas = (0.02, 0.08, 0.01)
+    weight_decay = 0.02
+    eps = 1e-8
+    optimizer = Adan(model.parameters(), lr=learningRate, betas=betas, weight_decay=weight_decay, eps=eps)
+    optimizer.set_velocity_terms(cli_velocity)
+    criterion = nn.NLLLoss()
+    print("Training:")
+    for epoch in range(epochs):
+        epochLoss = 0
+        for input, target in tqdm(dataset):
+            optimizer.zero_grad()
+            output = model(input)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+            epochLoss += loss.item()
+        epochLoss /= len(dataset)
+        print(f"EPOCH {epoch+1} LOSS: {epochLoss}")
 
+    velocity = optimizer.get_velocity_terms()
+    return model, velocity
 
-#ORIGINAL TESTING CODE
-# def test(model, testSet):
-#     print("Testing:")
-#     model.eval()
-#     correct, total = 0, 0
-#     with torch.no_grad():
-#         for input, target in testSet:
-#             output = model(input)
-#             correct += (output.argmax(1) == target).sum().item()
-#             total += target.size(0)
-#     return correct / total
 
 def test(model,testSet):
     print("Testing:")
