@@ -205,10 +205,10 @@ def train_mime(model, dataset, global_velocity):
 def train_with_adan(model, dataset, cli_velocity):
     epochs = 3
     learningRate = 0.001
-    betas = (0.02, 0.08, 0.01)
+    betas = (0.98, 0.92, 0.99)
     weight_decay = 0.02
     eps = 1e-8
-    optimizer = Adan(model.parameters(), lr=learningRate, betas=betas, weight_decay=weight_decay, eps=eps)
+    optimizer = Adan(model.parameters(), lr=learningRate, betas=betas, weight_decay=weight_decay, eps=eps, model=model)
     optimizer.set_velocity_terms(cli_velocity)
     criterion = nn.NLLLoss()
     print("Training:")

@@ -71,7 +71,8 @@ class Adan(Optimizer):
                  max_grad_norm=0.0,
                  no_prox=False,
                  foreach: bool = True,
-                 fused: bool = False):
+                 fused: bool = False,
+                 model=None):
         if not 0.0 <= max_grad_norm:
             raise ValueError('Invalid Max grad norm: {}'.format(max_grad_norm))
         if not 0.0 <= lr:
@@ -89,6 +90,11 @@ class Adan(Optimizer):
                 betas[2]))
         if fused:
             _check_fused_available()
+
+        self.param_name_map = {}
+        if model is not None:
+            for name, param in model.named_parameters():
+                self.param_name_map[param] = name
 
         defaults = dict(lr=lr,
                         betas=betas,
@@ -235,44 +241,68 @@ class Adan(Optimizer):
         return loss
     
     def set_velocity_terms(self, velocity_dict):
+        if not velocity_dict:  # Handle empty velocity dict case
+            print("Warning: Empty velocity dictionary provided")
+            return
+            
+        print('Setting velocity terms')
         for group in self.param_groups:
             for p in group['params']:
                 if p.requires_grad:
-                    param_name = self._get_param_name(p)  # Get parameter name
-                    if param_name in velocity_dict:
-                        state = self.state[p]
-                        state['exp_avg'].copy_(velocity_dict[param_name]['exp_avg'])
-                        state['exp_avg_diff'].copy_(velocity_dict[param_name]['exp_avg_diff'])
-                        state['exp_avg_sq'].copy_(velocity_dict[param_name]['exp_avg_sq'])
-                    else:
-                        print(f"Warning: No velocity found for parameter {param_name}. Initializing with zeros.")
+                    name = self._get_param_name(p)
+                    if name is None:
+                        continue
+                    
+                    # Get or initialize state dictionary for this parameter
+                    state = self.state[p]
+                    
+                    # Check if the parameter exists in velocity_dict
+                    if name in velocity_dict:
+                        # Initialize state if needed
+                        if 'exp_avg' not in state:
+                            state['exp_avg'] = torch.zeros_like(p)
+                        if 'exp_avg_diff' not in state:
+                            state['exp_avg_diff'] = torch.zeros_like(p)
+                        if 'exp_avg_sq' not in state:
+                            state['exp_avg_sq'] = torch.zeros_like(p)
+                        if 'neg_pre_grad' not in state:
+                            state['neg_pre_grad'] = torch.zeros_like(p)
                         
-                        # Initialize velocity terms with zeros
-                        state = self.state[p]
+                        # Copy velocity terms
+                        if 'exp_avg' in velocity_dict[name]:
+                            state['exp_avg'].copy_(velocity_dict[name]['exp_avg'])
+                        if 'exp_avg_diff' in velocity_dict[name]:
+                            state['exp_avg_diff'].copy_(velocity_dict[name]['exp_avg_diff'])
+                        if 'exp_avg_sq' in velocity_dict[name]:
+                            state['exp_avg_sq'].copy_(velocity_dict[name]['exp_avg_sq'])
+                    else:
+                        print(f"Warning: No velocity found for parameter {name}. Initializing zeros.")
                         state['exp_avg'] = torch.zeros_like(p)
                         state['exp_avg_diff'] = torch.zeros_like(p)
                         state['exp_avg_sq'] = torch.zeros_like(p)
+                        state['neg_pre_grad'] = torch.zeros_like(p)
+
+
 
     def get_velocity_terms(self):
         velocity_dict = {}
         for group in self.param_groups:
             for p in group['params']:
                 if p.requires_grad:
-                    param_name = self._get_param_name(p)  # Get parameter name
+                    name = self._get_param_name(p)
+                    if name is None:
+                        continue
                     state = self.state[p]
-                    velocity_dict[param_name] = {
+                    velocity_dict[name] = {
                         'exp_avg': state['exp_avg'].clone(),
                         'exp_avg_diff': state['exp_avg_diff'].clone(),
                         'exp_avg_sq': state['exp_avg_sq'].clone()
                     }
         return velocity_dict
 
+
     def _get_param_name(self, param):
-        """Utility function to retrieve parameter names."""
-        for group in self.param_groups:
-            for name, p in group.get('params_with_names', []):
-                if p is param:
-                    return name
+        return self.param_name_map.get(param, None)
 
 
 

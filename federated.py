@@ -137,9 +137,9 @@ def clientTraining_with_Adan(serverModel, serverVelocity, clientDatasets, client
     #client_data_size = len(clientDatasets[client][round])
     trainLoader = mnist_dataset.get_dataloader(clientTrainingSet)
     clientModel = deepcopy(serverModel)
-    clientVelocity = deepcopy(serverVelocity)
+    client_velocity = deepcopy(serverVelocity)
 
-    trainedClientModel, trainedClientVelocity = train_with_adan(clientModel, trainLoader, clientVelocity)
+    trainedClientModel, trainedClientVelocity = train_with_adan(clientModel, trainLoader, client_velocity)
 
     clientdistribution = get_label_distribution(trainLoader)
     clientModelsLock.acquire()
@@ -301,105 +301,105 @@ def print_velocities(velocity, label="Velocity"):
 #     clientNum = 5
 #     trainingRounds = 15
 
-# def federated(algo):
-#     # Open (or create) the CSV file and write headers
-#     #*********************POINT TO CHANGE****************
-#     #filename = 'federated_metrics_fedwan_non_iid_lr0.01.csv'
-#     filename = f'federated_metrics_base.csv'
-#     with open(filename, mode='w', newline='') as file:
-#         writer = csv.writer(file)
-#         writer.writerow([f"time_{algo}", f"accuracy_{algo}", f"loss_{algo}"])
+def federated(algo):
+    # Open (or create) the CSV file and write headers
+    #*********************POINT TO CHANGE****************
+    #filename = 'federated_metrics_fedwan_non_iid_lr0.01.csv'
+    filename = f'federated_metrics_base2.csv'
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([f"time_{algo}", f"accuracy_{algo}", f"loss_{algo}"])
 
-#     global clientModels
-#     global clientVelocities
-#     global clientDistributions
-#     global clientGrads
-#     config = federatedConfig()
+    global clientModels
+    global clientVelocities
+    global clientDistributions
+    global clientGrads
+    config = federatedConfig()
 
-#     serverModel = DNN()
-#     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
+    serverModel = DNN()
+    serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
-#     for round in range(config.trainingRounds):
-#         print(f"Round {round+1} started")
-#         #clientDatasets = mnist_dataset.split_client_datasets(trainSet, config.clientNum, config.trainingRounds)
-#         #clientDatasets = mnist_dataset.test2(trainSet, config.clientNum)
+    for round in range(config.trainingRounds):
+        print(f"Round {round+1} started")
+        #clientDatasets = mnist_dataset.split_client_datasets(trainSet, config.clientNum, config.trainingRounds)
+        #clientDatasets = mnist_dataset.test2(trainSet, config.clientNum)
 
-#         clientModels.clear()
-#         clientVelocities.clear()
-#         clientDistributions.clear()
-#         client_data_sizes.clear()
-#         clientGrads.clear()
-#         clientThreads = []
-#         for client in range(config.clientNum):
-#             a = 6
-#             if algo == "fedavg":
-#                 t = Thread(
-#                     target=clientTraining, 
-#                     args=(serverModel, clientDatasets, client, round)
-#                 )
-#             elif algo == "mfl":
-#                 t = Thread(
-#                     target=clientTraining_withLocalMomentum, 
-#                     args=(serverModel, serverVelocity, clientDatasets, client, round, False)
-#                 )
-#             elif algo == "fednag":
-#                 t = Thread(
-#                     target=clientTraining_withLocalMomentum, 
-#                     args=(serverModel, serverVelocity, clientDatasets, client, round, True)
-#                 )
-#             elif algo == "fedwan":
-#                 t = Thread(
-#                     target=clientTraining_withLocalMomentum, 
-#                     args=(serverModel, serverVelocity, clientDatasets, client, round, True)
-#                 )
-#             elif algo == "fedmom":
-#                 t = Thread(
-#                     target=clientTraining,
-#                     args=(serverModel, clientDatasets, client, round)
-#                 )
-#             elif algo == "mime":
-#                 t = Thread(
-#                     target=clientTraining_Mime,
-#                     args=(serverModel, serverVelocity, clientDatasets, client, round)
-#                 )
-#             else:
-#                 raise ValueError(f"Unknown algorithm: {algo}")
+        clientModels.clear()
+        clientVelocities.clear()
+        clientDistributions.clear()
+        client_data_sizes.clear()
+        clientGrads.clear()
+        clientThreads = []
+        for client in range(config.clientNum):
+            a = 6
+            if algo == "fedavg":
+                t = Thread(
+                    target=clientTraining, 
+                    args=(serverModel, clientDatasets, client, round)
+                )
+            elif algo == "mfl":
+                t = Thread(
+                    target=clientTraining_withLocalMomentum, 
+                    args=(serverModel, serverVelocity, clientDatasets, client, round, False)
+                )
+            elif algo == "fednag":
+                t = Thread(
+                    target=clientTraining_withLocalMomentum, 
+                    args=(serverModel, serverVelocity, clientDatasets, client, round, True)
+                )
+            elif algo == "fedwan":
+                t = Thread(
+                    target=clientTraining_withLocalMomentum, 
+                    args=(serverModel, serverVelocity, clientDatasets, client, round, True)
+                )
+            elif algo == "fedmom":
+                t = Thread(
+                    target=clientTraining,
+                    args=(serverModel, clientDatasets, client, round)
+                )
+            elif algo == "mime":
+                t = Thread(
+                    target=clientTraining_Mime,
+                    args=(serverModel, serverVelocity, clientDatasets, client, round)
+                )
+            else:
+                raise ValueError(f"Unknown algorithm: {algo}")
             
-#             t.start()
-#             clientThreads.append(t)
+            t.start()
+            clientThreads.append(t)
 
 
-#         for t in clientThreads:
-#             t.join()
+        for t in clientThreads:
+            t.join()
 
-#         print('printing server model')
-#         print(serverModel)  
+        print('printing server model')
+        print(serverModel)  
         
-#         if algo == "fedavg":
-#             serverModel = fedAvg(clientModels)
-#         elif algo == "mfl" or algo == "fednag":
-#             serverModel, serverVelocity = fedmomentum_NAG(clientModels, clientVelocities)
-#         elif algo == "fedwan":
-#             serverModel, serverVelocity = fedWAN(clientModels, clientVelocities, clientDistributions, round, config.clientNum)
-#         elif algo == "fedmom":
-#             serverModel, serverVelocity = fedmom(clientModels, serverModel, serverVelocity)
-#         elif algo == "mime":
-#             serverModel, serverVelocity = mime(clientModels, clientGrads, serverVelocity)
-#         else:
-#             raise ValueError(f"Unknown algorithm: {algo}")
+        if algo == "fedavg":
+            serverModel = fedAvg(clientModels)
+        elif algo == "mfl" or algo == "fednag":
+            serverModel, serverVelocity = fedmomentum_NAG(clientModels, clientVelocities)
+        elif algo == "fedwan":
+            serverModel, serverVelocity = fedWAN(clientModels, clientVelocities, clientDistributions, round, config.clientNum)
+        elif algo == "fedmom":
+            serverModel, serverVelocity = fedmom(clientModels, serverModel, serverVelocity)
+        elif algo == "mime":
+            serverModel, serverVelocity = mime(clientModels, clientGrads, serverVelocity)
+        else:
+            raise ValueError(f"Unknown algorithm: {algo}")
 
 
-#         testAcc, testLoss = test(serverModel, testLoader)
-#         print(f"Round {round+1} done\tAccuracy: {testAcc}\tLoss: {testLoss}")
-#         curr_time = time.time() - start_time
-#         print('start_time: ',start_time,' curr time: ',time.time())
+        testAcc, testLoss = test(serverModel, testLoader)
+        print(f"Round {round+1} done\tAccuracy: {testAcc}\tLoss: {testLoss}")
+        curr_time = time.time() - start_time
+        print('start_time: ',start_time,' curr time: ',time.time())
 
-#          # Append the results to the CSV file
-#         with open(filename, mode='a', newline='') as file:
-#             writer = csv.writer(file)
-#             writer.writerow([round + 1, curr_time, testAcc, testLoss])
+         # Append the results to the CSV file
+        with open(filename, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([round + 1, curr_time, testAcc, testLoss])
 
-#         print(f"Round {round+1} done\tAccuracy: {testAcc}\tLoss: {testLoss}")
+        print(f"Round {round+1} done\tAccuracy: {testAcc}\tLoss: {testLoss}")
 
 
 # if __name__ == "__main__":
@@ -412,65 +412,6 @@ def print_velocities(velocity, label="Velocity"):
 #     #federated('fedmom')
 #     #merge()
 
-
-
-
-
-
-
-
-# def fedAdan(clientModels, client_velocities):
-#     print('Number of Clients:', len(client_velocities),len(client_velocities[0]))
-#     for name, param in client_velocities[0].items():
-#         print(name)
-    
-#     averagedModel = deepcopy(clientModels[0])
-
-#     # Initialize aggregated velocity tensors with zeros
-#     averagedMomentum = {}
-#     averagedVelocity = {}
-#     averagedN = {}
-
-#     for name, param in client_velocities[0].items():
-#         if isinstance(param, dict) and 'exp_avg' in param:
-#             averagedMomentum[name] = torch.zeros_like(param['exp_avg'])
-#             averagedVelocity[name] = torch.zeros_like(param['exp_avg_diff'])
-#             averagedN[name] = torch.zeros_like(param['exp_avg_sq'])
-#         else:
-#             print(f"Skipping {name}, unexpected structure in initialization: {param}")
-
-#     with torch.no_grad():
-#         # Average the model parameters
-#         for model in clientModels[1:]:
-#             for param1, param2 in zip(averagedModel.parameters(), model.parameters()):
-#                 param1.data += param2.data
-#         for param in averagedModel.parameters():
-#             param.data /= len(clientModels)
-
-#         # Aggregate Adan-style velocities
-#         for velocity in client_velocities:
-#             for name, param_dict in velocity.items():
-#                 if name in averagedMomentum:  # Ensure key exists before aggregation
-#                     averagedMomentum[name] += param_dict['exp_avg']
-#                     averagedVelocity[name] += param_dict['exp_avg_diff']
-#                     averagedN[name] += param_dict['exp_avg_sq']
-#                 else:
-#                     print(f"Warning: {name} not found in initialized momentum terms.")
-
-#         # Final averaging across clients
-#         num_clients = len(client_velocities)
-#         for name in averagedMomentum:
-#             averagedMomentum[name] /= num_clients
-#             averagedVelocity[name] /= num_clients
-#             averagedN[name] /= num_clients
-
-#     return averagedModel, {
-#         name: {
-#             'exp_avg': averagedMomentum[name],
-#             'exp_avg_diff': averagedVelocity[name],
-#             'exp_avg_sq': averagedN[name]
-#         } for name in averagedMomentum
-#     }
 
 
 def fedAdan(clientModels, client_velocities):
@@ -590,4 +531,7 @@ def federated_adan():
 
 if __name__ == "__main__":
     start_time = time.time()
+    federated('fednag')
+    start_time = time.time()
     federated_adan()
+    
