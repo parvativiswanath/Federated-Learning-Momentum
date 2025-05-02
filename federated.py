@@ -316,7 +316,7 @@ def federated(algo):
     global clientGrads
     config = federatedConfig()
 
-    serverModel = DNN()
+    serverModel = CNN()
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for round in range(config.trainingRounds):
@@ -468,7 +468,7 @@ def fedAdan(clientModels, client_velocities):
 
 class federatedConfig:
     clientNum = 5
-    trainingRounds = 15
+    trainingRounds = 40
 
 
 def federated_adan():
@@ -480,7 +480,7 @@ def federated_adan():
     global clientModels, client_velocities, clientDistributions, client_data_sizes, clientGrads
     config = federatedConfig()
 
-    serverModel = DNN()
+    serverModel = CNN()
     server_velocity = {}
     for name, param in serverModel.named_parameters():
         server_velocity[name] = {

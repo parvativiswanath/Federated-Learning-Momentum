@@ -4,3 +4,8 @@ dataset/data
 .vscode
 flpy
 federated_metrics*
+client_model.pth
+client_velocity.pth
+updated_files.zip
+updated_model_params.pth
+updated_velocity.pth
