@@ -1,0 +1,93 @@
+#!/bin/bash
+
+set -e
+
+echo "Updating system..."
+apt update && apt install -y git make curl unzip usb-modeswitch udhcpc
+
+echo "Cloning and building quectel-CM..."
+cd /home/pi
+git clone https://github.com/bkerler/quectel-CM
+cd quectel-CM
+make
+
+echo "Creating 4G LTE startup script..."
+cat << 'EOF' > /usr/local/bin/start-4g.sh
+#!/bin/bash
+cd /home/pi/quectel-CM
+./quectel-CM -s airtelgprs.com
+EOF
+
+chmod +x /usr/local/bin/start-4g.sh
+
+echo "Creating systemd service for 4G..."
+cat << 'EOF' > /etc/systemd/system/4g.service
+[Unit]
+Description=Start 4G Connection via SIM7600
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/start-4g.sh
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable 4g.service
+
+echo "Installing Tailscale..."
+curl -fsSL https://tailscale.com/install.sh | sh
+
+echo "Creating Tailscale startup script..."
+cat << 'EOF' > /usr/local/bin/start-tailscale.sh
+#!/bin/bash
+tailscale up --authkey tskey-auth-kEQk2noNaX11CNTRL-6xfaap5hfdWzg4gUyZ6FeWHyst6KozEYj --hostname agri-nover-1
+EOF
+
+chmod +x /usr/local/bin/start-tailscale.sh
+
+echo "Creating systemd service for Tailscale auto-start..."
+cat << 'EOF' > /etc/systemd/system/tailscale-start.service
+[Unit]
+Description=Auto-start Tailscale on boot
+After=network-online.target 4g.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/start-tailscale.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable tailscale-start.service
+
+echo "Setting up SSH key access (optional)..."
+mkdir -p /home/pi/.ssh
+echo "ssh-rsa AAAAB3... your-key-here" >> /home/pi/.ssh/authorized_keys
+chmod 600 /home/pi/.ssh/authorized_keys
+chown -R pi:pi /home/pi/.ssh
+
+echo "Setup complete. Rebooting..."
+reboot
+
+
+
+
+Before You Run
+Replace these placeholders:
+
+YOUR_APN_HERE → your SIM card’s APN
+
+tskey-abc123 → your Tailscale pre-auth key
+
+agri-node-1 → unique hostname per node
+
+Copy this script to your Pi:
+
+Put it on the SD card in /boot/ or scp it before deployment.
+
+Run as root: sudo bash setup_rpi_agri_node.sh
