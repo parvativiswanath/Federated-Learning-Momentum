@@ -24,13 +24,12 @@ momentum = 0.9
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-try:
-    from google.colab import drive as _colab_drive
-    _colab_drive.mount('/content/drive')
-    output_dir = '/content/drive/MyDrive/fedwan_results'
-    os.makedirs(output_dir, exist_ok=True)
-    print(f"Colab detected — outputs will be saved to {output_dir}")
-except ImportError:
+_drive_path = '/content/drive/MyDrive/fedwan_results'
+if os.path.isdir('/content/drive/MyDrive'):
+    os.makedirs(_drive_path, exist_ok=True)
+    output_dir = _drive_path
+    print(f"Google Drive detected — outputs will be saved to {output_dir}")
+else:
     output_dir = '.'
 
 
