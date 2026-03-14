@@ -16,18 +16,17 @@ MOMENTUM = 0.9
 def train(model, dataset):
     optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
 
     print("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
+            input, target = input.to(device), target.to(device)
 
-            # Reset such that only gradients that pertain
-            # to the current input are used
             optimizer.zero_grad()
 
-            # Forward
             output = model(input)
 
             # No need to shape target to one-hot encoding
@@ -45,12 +44,14 @@ def train(model, dataset):
 
 def train_with_momentum(model, dataset, velocity):
     criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
     model.train()
     print("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
+            input, target = input.to(device), target.to(device)
 
             model.zero_grad()
 
@@ -74,12 +75,14 @@ def train_with_momentum(model, dataset, velocity):
 
 def train_with_NAG(model, dataset, velocity):
     criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
     model.train()
     print("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
+            input, target = input.to(device), target.to(device)
 
             model.zero_grad()
 
@@ -108,6 +111,7 @@ def train_with_NAG(model, dataset, velocity):
 
 def train_mime(model, dataset, global_velocity):
     criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
 
     global_model = deepcopy(model)
 
@@ -117,6 +121,7 @@ def train_mime(model, dataset, global_velocity):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
+            input, target = input.to(device), target.to(device)
 
             model.zero_grad()
 
@@ -136,6 +141,7 @@ def train_mime(model, dataset, global_velocity):
 
     #Compute full batch gradient based on server parameters
     data, target = next(iter(dataset))
+    data, target = data.to(device), target.to(device)
     global_model.zero_grad()
     output = global_model(data)
     loss = criterion(output, target)
@@ -164,12 +170,14 @@ def train_mime(model, dataset, global_velocity):
 def test(model,testSet):
     print("Testing:")
     criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
     model.eval()
     correct, total = 0, 0
     total_loss = 0.0
 
     with torch.no_grad():
         for input, target in testSet:
+            input, target = input.to(device), target.to(device)
             output = model(input)  # Forward pass
             loss = criterion(output, target)  # Compute loss
 

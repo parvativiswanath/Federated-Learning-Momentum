@@ -2,6 +2,7 @@ from collections import Counter
 from copy import deepcopy
 from threading import Thread, Lock
 
+import os
 import torch
 import time
 import csv
@@ -19,6 +20,18 @@ client_grads = []
 
 client_models_lock = Lock()
 momentum = 0.9
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+
+try:
+    from google.colab import drive as _colab_drive
+    _colab_drive.mount('/content/drive')
+    output_dir = '/content/drive/MyDrive/fedwan_results'
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Colab detected — outputs will be saved to {output_dir}")
+except ImportError:
+    output_dir = '.'
 
 
 def model_bytes(model):
@@ -178,7 +191,8 @@ def fed_wan(client_models,client_velocities, client_distributions, round, num_cl
         global_distribution[label] /= total_size
     
     #Initialise weights
-    weights = torch.zeros(len(client_distributions), dtype=torch.float)
+    model_device = next(client_models[0].parameters()).device
+    weights = torch.zeros(len(client_distributions), dtype=torch.float, device=model_device)
 
     # Calculate weights
     for client in range(len(client_distributions)):
@@ -284,7 +298,7 @@ def federated(algo):
     clientDatasets = data_utils.split_non_iid_class_proportional(trainSet, num_clients)
     testLoader = data_utils.get_dataloader(testSet)
 
-    filename = f'federated_metrics_cnn{algo}_test1.csv'
+    filename = os.path.join(output_dir, f'federated_metrics_cnn{algo}_test1.csv')
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow([
@@ -298,7 +312,7 @@ def federated(algo):
     global client_distributions
     global client_grads
 
-    serverModel = LogisticRegression()
+    serverModel = LogisticRegression().to(device)
     serverVelocity = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for rnd in range(training_rounds):
@@ -389,8 +403,8 @@ def federated(algo):
 if __name__ == "__main__":
     #federated('fedavg')
     federated('fedwan')
-    #federated('fednag')
-    #federated('mfl')
-    #federated('mime')
-    #federated('fedmom')
-    #merge()
+    federated('fednag')
+    federated('mfl')
+    federated('mime')
+    federated('fedmom')
+    merge()
