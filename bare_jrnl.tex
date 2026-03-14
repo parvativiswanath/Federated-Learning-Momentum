@@ -1,0 +1,606 @@
+
+\documentclass[journal]{IEEEtran}
+% \usepackage{positioning}
+\usepackage{amssymb}
+\usepackage{soul}
+\usepackage{mathrsfs}
+\usepackage{xcolor}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\SetKwInput{KwInput}{Input}                % Set the Input
+\SetKwInput{KwOutput}{Output} 
+\usepackage{graphicx,pgfplots,tikz,tikz-3dplot}
+\usepackage[switch]{lineno}
+\usetikzlibrary{pgfplots.groupplots}
+\usetikzlibrary{plotmarks}
+\pgfplotsset{compat=newest}
+\usepackage{mathtools}
+\usepackage{amsmath}
+\usepackage{blkarray}
+\usepackage{rotating} 
+\usepackage{enumerate}
+\usepackage[utf8]{inputenc}
+\usepackage{upgreek}
+\usepackage{graphicx}
+\usepackage[binary-units]{siunitx}
+\usepackage{booktabs,cite, epstopdf}
+\usepackage{caption}
+%\usepackage{subfig}
+%\usepackage{subcaption}
+\usepackage{subfigure}
+\let\emptyset\varnothing
+\usepackage{multirow}
+\newcommand{\add}[1]{{\leavevmode\color{mblue}{#1}}}
+\usepackage[color={black!5!green!10}]{todonotes}
+\presetkeys{todonotes}{inline}{}
+\definecolor{morange}{rgb}{0.8,0.2,0}
+\definecolor{mblue}{rgb}{0,0.1,0.8}
+\definecolor{mgreen}{rgb}{0,0.8,0.1}
+\definecolor{mred}{rgb}{1,0,0}
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+
+\usepackage[long]{optidef}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\usepackage{algorithmic}
+
+
+\begin{document}
+%\linenumbers
+
+
+\title{Federated Learning using Nesterov's Momentum for Non-IID Data Handling in Edge Networks}
+
+\author{Parvati~Viswanathan, and Mainak~Adhikari,~\IEEEmembership{Senior Member,~IEEE}
+\thanks{Manuscript received July XX, XXXX; revised September XX, XXXX; accepted October XX, XXXX. Date of publication October XX, XXXX; date of current version January XX, XXXX. The associate editor coordinating the review of this article and approving it for publication was Prof. XXXXX XXXXXXX.}
+\thanks{\emph{Corresponding author: Mainak~Adhikari.}}
+\thanks{This work is supported by TCoE (DoT), Government of India, under the Grant TTDF/6G/119 and is supported by Department of Biotechnology, Government of India, under the Grant BT/PR49045/AI/133/145/2023}
+\thanks{P.~Viswanathan and M.~Adhikari are with the School of Data Science, Indian Institute of Science Education and Research Thiruvananthapuram, India-695551 (e-mail: parvativiswanathan@iisertvm.ac.in, mainak.ism@gmail.com).} 
+%\thanks{Digital Object Identifier 10.1109/TPDS.2020.3021XXX}
+%\thanks{15XX-32XX © 2025 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.}
+%\thanks{See https://www.ieee.org/publications/rights/index.html for more information.} 
+}
+\markboth{IEEE Transactions on Computational Social Systems}%
+{Viswanathan \MakeLowercase{\textit{et al.}}: Bare Demo of IEEEtran.cls for IEEE Journals}
+%\linenumbers
+\maketitle
+\begin{abstract}
+Federated Learning (FL) is an emerging distributed Machine Learning (ML) technique that addresses data privacy concerns by enabling multiple Edge Devices (EDs) to train a global model while keeping the data decentralized. Despite the advantages, FL faces significant challenges such as data heterogeneity, that is, Non-Independent and Identically Distributed (Non-IID) data and a slower convergence rate. Conventional FL uses a plain gradient descent algorithm for model training on the EDs and simple averaging at intervals to update the global model (Federated Averaging or FedAvg). The use of momentum gradient descent for model training to speed up convergence in FL environments has also been well explored. However, there is limited research on Nesterov Accelerated Gradient (NAG) in FL, although it is recognized as capable of achieving faster convergence than standard momentum. Motivated by this, we propose Federated Learning with Weighted Averaging and Nesterov momentum (FedWAN), which combines NAG for model training on the EDs with a weighted averaging method to handle data heterogeneity and update the global model. The weights are calculated based on the Kullback-Leibler (KL) divergence between the local data distributions and an aggregated global data distribution, prioritizing EDs with more diverse data. The performance of the proposed method is examined through extensive simulations on benchmark datasets such as MNIST and CIFAR-10, and it is observed that the convergence rate on Non-IID data is improved by 3-12\% compared to existing FL solutions.
+
+% Adopting a weighted aggregation scheme on the server side that prioritizes edge devices with more diverse data as opposed to simple averaging ( could be beneficial for addressing data heterogeneity. The weights for each round are calculated based on the KL divergence between the local data distributions and an aggregated global data distribution. Further, it has been seen that adding a momentum term during local training significantly speeds up convergence using the history of past updates, smoothing out oscillations in the convergence process. This leads us to propose Federated Learning with Weighted Averaging and Nesterov momentum (FedWAN), which combines momentum-based Nesterov Accelerated Gradient (NAG) model training on the edge devices with a weighted averaging method applied on the server side. We compare the proposed method with other state-of-the-art methods based on real-world datasets and it can be seen that it outperforms existing approaches in terms of convergence rate and performance with Non-Independent and Identically Distributed (Non-IID) data.
+\end{abstract}
+
+% Note that keywords are not normally used for peer-reviewed papers.
+\begin{IEEEkeywords}
+Edge Computing, Federated Learning, Nesterov Accelerated Gradient, Weighted Aggregation, Non-IID Data.
+\end{IEEEkeywords}
+
+\section{Introduction}
+%iot/real-time application
+\IEEEPARstart{T}{he} development of technologies like Internet-of-Things (IoT) and distributed Artificial Intelligence (AI) has revolutionized data processing by enabling real-time analytics and decision-making at the edge of networks. Traditionally, data generated from sensors was sent to centralized data centers where it was processed and analyzed. However, with the accelerated rate of data generation that accompanies modern technologies such as IoT, a decentralized approach can lead to better efficiency and reduce reliance on a central server. This approach is also highly significant for real-time applications such as autonomous vehicles, industrial automation, and healthcare monitoring~\cite{intro} since the latency involved in communication with the central server is reduced and immediate responses are obtained.
+
+%edge computing
+In these circumstances, Edge Computing is an emerging technology that enables the processing of data close to its source~\cite{edge-ai-driven}, such as IoT devices and sensors. Storage and computing resources on local Edge Devices (EDs) are made use of, minimizing the reliance on centralized cloud infrastructure. Compared to centralized approaches, edge computing reduces latency and bandwidth usage, addresses privacy concerns, and enables real-time data processing at the edge of the network. Additionally, its distributed architecture removes the bottleneck, created by a central server. The single point of failure is reduced when there are multiple EDs with their own Machine Learning (ML) models, which can perform inference without having to connect to an external server. This approach also enhances fault tolerance, as devices can continue functioning even if disconnected from the cloud, ensuring continuous service even in remote or disaster-prone areas.
+
+%FL
+As a distributed ML strategy, Federated Learning (FL) was introduced by Google in 2016~\cite{fedavg-introduction} to solve the challenge of training a centralized model when the data is spread across multiple client devices such as EDs. It has since gained significant attention due to its capacity to train a global model on large amounts of data without any of the data leaving their respective EDs, thus addressing data privacy concerns~\cite{singh2025hybrid}. This process involves a distributed architecture with multiple EDs connected to a central FL server. The EDs train a local model on their local datasets, with this local model making it possible to perform real-time inference with minimum delay. At intervals, the local model parameters of the EDs are sent to the server for global model aggregation, following which the updated model parameters are sent back. This makes up one round of FL. Multiple rounds of FL are additionally performed until the global model converges to an optimal generalized solution. The global model aggregation at intervals makes it possible to generalize the model and is the equivalent of training on large amounts of data as in centralized ML. Fig.~1(a) gives a high-level overview of an FL setup with two EDs.
+
+ 
+%\subsection{Challenges of standard FL}
+Despite the many advantages of FL, some areas still need improvement for better performance~\cite{fl-recent-survey}. The key challenges involved in existing FL solutions are listed below: 
+
+\begin{enumerate}
+    \item \textit{Data Heterogeneity: } Unlike in centralized ML, where all the data is collected in one place and can be assumed to have a uniform distribution, in FL the data remains distributed. Individual EDs only have access to their own dataset and the central server does not have access to any of the data. This means that the data cannot be assumed to follow a uniform distribution and is therefore Non-Independent and Identically Distributed (Non-IID). In real scenarios, participating EDs may be positioned in various diverse environments, and there are usually always variations in the data regarding size or quality. 
+    \item \textit{Device Heterogeneity: } The large variety of EDs involved in a distributed ML process such as FL makes it necessary to handle device heterogeneity. Considering just the example of mobile phones, there is a large variety of smartphones available, and with the rate of progression of technology, newer models are constantly replacing the older ones in the market. This leads to a wide variety in the capabilities, memory, computation power, and other factors for mobile devices alone. EDs may be mobile devices, laptops, smart watches, or even small servers capable of processing data and performing inference.
+
+    \item \textit{Communication Overhead: } In each round of FL, the local model parameters are sent to the server, and the aggregated global model parameters are sent back. If the global aggregation frequency is decreased, the communication cost is less, however, convergence will also be slower. If the global aggregation frequency is high, convergence is faster, but the parameters need to be sent more often across the network, so the communication overhead is high. Therefore an optimal trade-off has to be achieved so that a good convergence rate can be obtained with manageable communication overhead. 
+\end{enumerate}
+
+\begin{figure}[!t]
+    \centering
+    \subfigure[Working Principle of Federated Learning in Edge Networks]{
+        \includegraphics[width=0.45\textwidth]{images/fl_diagram.png} \label{fig:fl-overview}
+    }
+    \subfigure[Momentum-assisted Federated Learning in Edge Networks]{
+        \includegraphics[width=0.45\textwidth]{images/fl_diagram2.png} % Replace with actual image path
+        \label{fig:fl-overview-with-momentum}
+    }
+    \caption{Working Principle of Federated Learning with and without Momentum}
+\end{figure}
+
+
+Non-IID data is especially relevant in FL systems in a real-time environment. Many approaches have been proposed to optimize FL for Non-IID data~\cite{fl-noniid} such as maintaining a common data subset for server-side learning~\cite{non-iid-data-2024}, data selection-based methods~\cite{fl-enhance}, regularization methods for generalization, and grouping of EDs based on data distributions or other factors~\cite{personalizedfl, clustering11}. ED heterogeneity and communication overhead are two other significant challenges that are inherent in distributed systems, due to which the results seen when using real-world sensors and devices may differ vastly from simulations. A common solution proposed for the challenge of ED heterogeneity is adaptive device sampling based on their available resources and capabilities~\cite{client-sel1, client-sel2}. Addressing communication overhead~\cite{communication-overhead-2024} is also highly relevant, especially in a real-time environment or dynamic edge networks. Many other works~\cite{fed-challenges2024} that explore these challenges and their possible solutions have been implemented, however, some optimization techniques are yet left largely unexplored.
+
+%\subsection{Motivation}
+The common standard for FL algorithms is Federated Averaging (FedAvg)~\cite{fedavg-introduction}, where EDs share model parameters with the server at the end of each round and global model aggregation is done by simple averaging. The same paper also introduces Federated Stochastic Gradient Descent (FedSGD), a variation in which client gradients are sent for aggregation at each round and the global model is updated based on the aggregated gradients instead of conducting local training. However, these methods mostly use plain gradient descent without any optimization in the weight updation. In centralized ML, additional methods of optimizing the traditional gradient descent algorithm, such as momentum and adaptive learning rates, have been well explored. However, it is difficult to say the same for distributed ML as of yet. 
+
+\begin{figure}[!t]
+    \centering
+    \subfigure[Loss]{
+        \includegraphics[width=0.225\textwidth]{images/accuracy.jpg} % Replace with actual image path
+    }
+    \subfigure[Training Time]{
+        \includegraphics[width=0.225\textwidth]{images/loss.jpg} % Replace with actual image path
+    }
+    \caption{Performance comparison of Federated Learning with and without Momentum}
+    \label{fig:fl_momentum}
+\end{figure}
+
+\renewcommand{\arraystretch}{1.5} % Increase the row height
+\begin{table*}[!t]
+\caption{Comparison of different FL approaches with different Momentum methods}
+\begin{tabular}{lccccc}
+\hline
+\textbf{Algorithm} & \textbf{Momentum Type} & \textbf{\begin{tabular}{c}Local \\ Momentum\end{tabular}} &  \textbf{\begin{tabular}{c}Server \\ Momentum\end{tabular}} & \textbf{Local Weight Update} & \textbf{\begin{tabular}{c}Communication \\ Overhead\end{tabular}} \\ \hline
+MFL~\cite{mfl}         & Standard    & Yes  & No    &\begin{tabular}{c}$v_i(t) \leftarrow \gamma v_i(t - 1) + \nabla F_i(w_i(t - 1))$ \\ $w_i(t) \leftarrow w_i(t - 1) - \eta v_i(t)$\end{tabular} &Medium   \\ \hline
+FedMom~\cite{fedmom}          & Standard         & No      & Yes    &$w_i(t) \leftarrow w_i(t - 1) - \eta \nabla F_i(w_i(t - 1))$ &Medium           \\ \hline
+FedNAG~\cite{fednag}        & Nesterov    & Yes         & No  &\begin{tabular}{c}$v_i(t) \leftarrow \gamma v_i(t - 1) - \eta \nabla F_i(w_i(t - 1))$ \\ $w_i(t) \leftarrow w_i(t - 1) + \gamma v_i(t) - \eta \nabla F_i(w_i(t - 1))$\end{tabular} &Medium              \\ \hline
+MIME~\cite{mime}        & Standard          & Yes      & Yes     &\begin{tabular}{c}$w_i(t) \leftarrow w_i(t - 1) - \eta ((1 - \gamma) \nabla F_i(w_i(t - 1))  +$ \\ $\gamma v \left( \left\lfloor \frac{t}{\tau} \right\rfloor - 1 \right) \tau$\end{tabular} 
+ &High           \\ \hline
+SlowMo~\cite{slowmo}    & Standard       & No      & Yes     &$w_i(t) \leftarrow w_i(t - 1) - \eta \nabla F_i(w_i(t - 1))$
+ &Medium            \\ \hline
+QG-DSGDm~\cite{quasi-global-momentum} & Standard        & Yes  &No   &\begin{tabular}{c} $d_i(t) = \frac{w_i(t) - w_i(t+1)}{\eta}$ \\ $v_i(t) \leftarrow \mu v_i(t-1) + (1 - \mu) d_i(t)$ \\
+$v_i(t) \leftarrow \gamma v_i(t - 1) + \nabla F_i(w_i(t - 1))$ \\ $w_i(t) \leftarrow w_i(t - 1) - \eta v_i(t)$ \end{tabular}  & Low                \\ \hline
+\end{tabular}
+\label{tab:comparison}
+\end{table*}
+
+
+Momentum is a hyperparameter that smooths out oscillations and speeds up convergence in achieving global minima, something that is especially relevant in FL. The faster convergence is achieved by making use of a velocity term in the weight updation, which stores the history of past gradients. The velocity term is responsible for building up momentum towards finding the global optimal solution. Fig.~1 shows a typical FL system with and without momentum in local training. From this, it can be seen that for each round of FL, the velocity terms are also sent to the server along with the model parameters. The velocities are also aggregated and updated for each ED. This means that the updated velocity terms affect subsequent local training steps, helping EDs maintain a consistent direction in their gradient updates. Fig.~\ref{fig:fl_momentum} highlights the difference in convergence rates compared to FedAvg and FedSGD for the momentum-based approach. It can be seen that momentum gradient descent significantly accelerates the convergence rate.
+
+In addition, it has been proven that Nesterov Accelerated Gradient (NAG) is an improved form of momentum that calculates gradients not at the current parameters but at the lookahead parameters after updating them with momentum~\cite{nesterov-intro}. The implementations of FL with the NAG update in local training~\cite{fednag} generally perform better than approaches with standard momentum applied in the ED or server side, due to its potential for faster convergence. Therefore, we select NAG for local model updates, increasing the convergence rate even in Non-IID scenarios. However, this improvement would plateau after a point since it alone fails to address the underlying problem of data heterogeneity and differing data distributions. The state-of-the-art algorithms such as FedAvg utilize a simple averaging strategy to obtain the global model at the end of each round. While this would perform adequately with IID data, its performance would be lowered in the case of Non-IID data due to differences in the directions of local updates. In this case, assigning a weighted aggregation scheme would be more advantageous, giving higher weight to local model parameters that have trained on more diverse data and are therefore able to generalize better. 
+
+
+%\subsection{Contributions}
+This leads us to propose a new FL strategy in edge networks, i.e., Federated Learning with Weighted Averaging and Nesterov momentum (FedWAN). The main contributions of this paper are described as follows.
+\begin{itemize}
+    \item Design and implement an FL system where EDs perform local updates using NAG, storing the history of past updates and enabling faster convergence. The approach enables a more informed update despite the distributed environment of the FL system while not compromising the quality of the global model.
+    \item Integrate a weighted aggregation scheme at the server based on the data distribution of the EDs. EDs send their data distributions along with their parameters to the central server, where it is aggregated to form a global data distribution. The weights are assigned based on how similar each local data distribution is to the global data distribution. This weighted scheme addresses the challenges posed by data heterogeneity by directly incorporating information about the local data distributions. 
+    \item Validate the proposed method through a container-based approach using Docker by setting up separate Docker files with all the required dependencies for the server and EDs. In this setup, extensive simulations are performed on publicly available datasets such as the MNIST and CIFAR-10 datasets to compare the proposed method with state-of-the-art techniques for IID and Non-IID data.
+\end{itemize}
+
+%paper organization
+The remainder of this paper is divided as follows. Section II discusses related work in FL and existing implementations of momentum in FL environments. Section III outlines the system model and problem statement. Section IV describes the proposed method in detail. The experimental setup and results obtained on different datasets are explored in Section V. Finally, Section VI concludes the work.
+
+%experimental setup
+
+%Related studies - MIME, FedMom, FedNAG, MFL
+\section{Related Works}
+This section explores FL, its applications, and how various existing algorithms address the challenges in FL. This is followed by a review of momentum-based approaches in FL and a discussion of research gaps in the literature.
+
+\subsection{Federated Learning and Applications}
+Centralized ML, which has been a widely used approach in recent times, has a major drawback in that all the training data needs to be collected in one place, often a resource-intensive device, for analysis and training. This raises privacy concerns, especially in sensitive areas such as healthcare, finance, and banking. The primary reason for the advent of FL is the advantage it offers in terms of data privacy. The data remains distributed and is never shared outside the user's device. 
+
+The current baseline for FL algorithms is FedAvg~\cite{fedavg-introduction} in which EDs transmit their local models to the server at intervals and aggregation is done by simple averaging. Many improvements have been made to this standard algorithm that addresses one or more common challenges of FL. FedNova~\cite{fednova} addresses data heterogeneity by normalizing each ED contribution to the global model based on the number of local updates performed. The work in~\cite{scaffold} introduces SCAFFOLD, which similarly addresses data heterogeneity and reduces client drift using control variates and a controlled averaging scheme for the EDs and server. Most additional works that address data heterogeneity involve regularizing the local updates in some way so that they do not deviate too much from the global model.
+
+FedProx~\cite{fedprox} attempts to address ED heterogeneity by adding a proximal regularization term to the local loss function, thereby constraining local updates and reducing client drift. Device heterogeneity in synchronous FL leads to the straggler effect, where the devices with lower computational and processing power slow down the entire system. Existing work in this area involves adaptively selecting the clients in each round based on their computational power. 
+
+Reinforcement Learning (RL) techniques have also been explored to handle the data heterogeneity in dynamic edge networks~\cite{singh2025selffed}. The FAVOR algorithm proposed in~\cite{fl-rl1} is an experience-driven framework that uses reinforcement learning to adaptively select the EDs that are to participate in each round of FL. Additionally, quantization approaches are often proposed that aim to lower communication overhead with the server by reducing the size of updates for transmission~\cite{quant}. This is beneficial for EDs, which are often limited in terms of bandwidth and communication capabilities. The work in~\cite{quantization} aims to achieve a trade-off between minimizing distortion in the model behavior due to quantization and data rate constraints. Several adaptive techniques involving quantization and RL that target to lower communication overhead or handle device heterogeneity have also been incorporated into standard FL~\cite{drl-quantization, drl-client-selection}. FedPAQ~\cite{fedpaq} uses quantization operators on the local parameters to reduce the size of data to be transmitted. At the server side, the data is decoded and combined to form the updated global model. 
+
+\subsection{Momentum in Federated Learning}
+Momentum is a well-known technique in standard ML to accelerate convergence using a moving average of past gradients. This adds an element of history to the parameter updates, thereby building inertia in the direction of the global minima and avoiding saddle points or local minima. The update equation for standard momentum is derived from Polyak's heavy ball method~\cite{polyak1964} and is defined as follows.
+\begin{equation}
+v_{t+1} = \gamma v_t - \eta \nabla F(w_t)
+\end{equation}
+
+\begin{equation}
+w_{t+1} = w_t + v_{t+1}
+\end{equation}
+
+where \(\gamma\) represents the momentum term in the range [0, 1], \(\eta\) the learning rate, \(\nabla\) \(F(w_t)\)\ the loss function and \(v_t\) the moving average of gradients.
+
+Recently, the advantages of momentum have led to research focused on using momentum in FL scenarios. Most of this work can be broadly divided into two types - ones that use server momentum and ones that use momentum on the local updates. FedMom as described in~\cite{fedmom} implements server momentum, using the averaged difference between the local model parameters and the last global model parameters as a form of gradient to update the current global model. The basic implementation of ED-side momentum is described in the MFL algorithm of~\cite{mfl}, where a momentum step is added during local updates. A similar approach is described in~\cite{fedcm}, making use of local momentum. The FedNAG algorithm in~\cite{fednag} improves on these by applying NAG on the local updates. The update equation in this case is derived as follows.
+
+\begin{equation}
+v_{t+1} = \mu v_t + \eta \nabla F_i(w_t + \mu v_t)
+\end{equation}
+\begin{equation}
+w_{t+1} = w_t - v_{t+1}
+\end{equation}
+
+In all the methods mentioned above, the velocity terms are sent to the server, where they are averaged and sent back. In a different approach, Mime~\cite{mime} applies the server momentum repeatedly in the local model updates and updates the server velocity at each aggregation using the full batch gradients with respect to the global model, calculated by each ED. 
+
+In the approaches involving local momentum, the velocity terms are also sent across the network along with the parameters, and the aggregated velocity is used in the next round of local updates. This accelerates the rate of convergence but also increases the data that needs to be transmitted between ED and server. The QG-DSGDm algorithm or quasi-global momentum algorithm described in~\cite{quasi-global-momentum} attempts to reduce this additional data transmission by computing the local velocities using the difference between two consecutive global models. This approach addresses client drift due to data heterogeneity and also lowers communication overhead by reducing the amount of data transmitted in the uplink. Table~\ref{tab:comparison} summarizes the differences between the various implementations of FL solutions with momentum.
+
+From the existing algorithms, it would seem that server momentum accelerates the generalization process, and therefore would perform better on Non-IID data. However, it is observed that FedNAG gives the fastest convergence due to the nesterov approach at the ED level. However, FedNAG too performs only averaging at the server side, without taking into account the varying influences each local model should have on the global model in the presence of data heterogeneity. Although there are many additional FL approaches proposed in the literature that involve momentum at some level to tackle Non-IID data~\cite{fedglomo, flmomentum1}, there is limited research on FL implementations involving nesterov momentum. 
+
+\section{System Model and Problem Statement}
+This section describes the system model followed by the problem statement for the proposed method. The system model outlines the FL architecture and training process, describing the roles of the EDs and the central server. The problem statement outlines the challenges we address through the proposed strategy.
+
+\subsection{System Model}
+We propose the FedWAN system model for handling Non-IID data and heterogeneity in edge networks. In the FL environment, $N$ workers or EDs are located at different sites and are connected to a central server. The EDs are connected to IoT devices and various sensors which generate the local datasets $D_1, D_2, \dots, D_N$ respectively. The central server contains a global model and each of the EDs have their own local model which has the same architecture as the global model. The datasets $D_1, D_2, \dots, D_N$ are used for training the local models on the EDs and may differ for each round regarding size or quality (Non-IID data). The overall working principle of the proposed strategy is shown in Fig.~\ref{fig:system_model}.
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.45\textwidth]{images/fedwan_systemmodel3.png}
+    \caption{Working Principle of the Proposed Momentum-assisted Federated Learning Strategy in Edge Networks}
+    \label{fig:system_model}
+\end{figure}
+
+When the system is initialized, the global model is initialized on the central server and the parameters (weights and biases) are distributed to the EDs. The EDs update their local model with these parameters and perform local training using NAG momentum. The trained model parameters are sent to the central server, where the global model aggregates and updates all the local parameters. This makes up one communication round. The FL system trains for multiple communication rounds until the global model reaches convergence. This means that the central server aims to learn a global model $w$ using the local parameters collected, which is a solution to the problem of minimizing the global loss, defined as follows.
+
+\begin{equation}
+\min_{w} \mathcal{F}(w) = \sum_{n=1}^N \frac{D_k}{D} \mathcal{F}_k(w), \label{eq:global_loss}
+\end{equation}
+% F_k(w)
+
+where $F(w)$ represents the global loss function, ${F}_{\text{k}}(w)$ is the local loss function for each ED, ${D}_{\text{k}}$ is the local dataset for each ED, and $D = \sum_{i=1}^N D_k$. We assume that only a subset of the total number of EDs participate in each communication round. This is because in a real-world environment, edge networks are highly dynamic and the communication links may vary over time. The connection between the central server and the EDs may also be lost at times when there are network issues or if some of the EDs fail. Also, there may be cases where the EDs exhibit high mobility. In these situations, the connection can be established only for those periods when the EDs are within the range of the central server. To deal with these issues, in each communication round, the central server waits for a period of time $t_{\text{wait}}$ to receive the local parameters, velocities, and data distributions from each ED. Only the EDs that send the information within this time period can update in that particular round.
+
+The global model is updated through a dynamic weighted aggregation scheme that prioritizes local models, which are more representative of the global data distribution. The weights are determined based on the local data distributions and are dynamic in the sense that they are recalculated for each round. This means that even when the data is Non-IID or if the data distribution changes over time, the server appropriately calculates the weights such that EDs with more diverse local datasets are given higher weight. This also means that the chances of obtaining a biased global model are reduced, due to the fact that the biased local models are trained on a smaller subset of the whole global dataset, and therefore the weights calculated for them are less since their Kullback-Liebler (KL) divergence from the global data distribution is high. So such local models have less influence on the global model.
+
+\subsection{Problem Statement}
+Based on the study of existing works, we have identified the following problem statements, which are to be addressed by the proposed strategy.
+\begin{itemize}
+    \item Firstly, the distributed setup of an FL environment means that the convergence rate is lower than in corresponding centralized methods. The diversity in the directions of local optima due to various factors common in distributed systems leads to slower overall convergence. Therefore the first objective is to improve the convergence of the global model using NAG momentum, applied to the local updates.
+    \item Secondly, a common challenge in FL systems is the proper handling of Non-IID data. The local data of the EDs may differ in terms of content and distribution. This may lead to the development of a global model that is unable to generalize well across all EDs. Certain EDs with specific local distributions may also dominate the training process, leading to a biased global model. The second objective is to address these issues through a weighted aggregation scheme, leading to the development of a generalized global model that gives better performance across all EDs. 
+\end{itemize}
+
+\begin{algorithm}[!t]
+    \KwInput{Edge devices 1 to $N$, Communication rounds: $K$, Total iterations: $T = K\tau$}
+    \KwOutput{Global model parameters: $w_g$}
+  \textbf{Server Side}\; 
+Initialize global model parameters $w_g(0)$\;
+Initialize global velocity $v_g(0) = 0$\;
+\For{$t = 1$ \textbf{to} $T$}
+{
+    \If{$t == k\tau$}
+    {
+        \ForEach{ED $i$ in $N$}
+        {
+            Send updated global model parameters $w_g$
+        }
+        \ForEach{ED $i$}
+        {
+            Receive local model parameters $w_i$, local velocity $v_i$ and local data distribution $D_i$ through Algorithm \ref{algo2}
+        }
+        Update the global model through the weighted aggregation of local models\;
+        \ForEach{ED $i$ in $N$}
+        {
+            \(
+KL_i(t) = \sum_{x=1}^{|D_i|} D_i(x) \left[\log\left(\frac{D_i(x)}{D_g(x)}\right)\right]
+\)\;
+            Calculate weights $\lambda_i(t)$\;
+            \(\lambda_i(t) = \frac{KLI_i(t)}{\sum_{i \in N} KLI_i(t)}\)\;
+        }
+        \textbf{Aggregate} $w_t$\;
+        \(w(t) = \sum_{i \in N} \lambda_i w_i(t)\)\;
+        \textbf{Aggregate} $v_t$\;
+        \(v(t) = \frac{\sum_{i=1}^{N} D_i v_i(t)}{D}\)\;
+        Send global velocity $v_i(t)$ and global parameters $w_i(t)$ to all EDs $i$\;
+    }
+}
+Set $w_f$ as final global model parameters\;
+
+\textbf{Return} $w_f$
+\caption{FedWAN - Server Side}
+\label{algo1}
+\end{algorithm}
+
+\section{FedWAN: Federated Learning with Weighted Averaging and Nesterov Momentum}
+The proposed strategy aims to solve the distributed learning problem shown in Eq. \eqref{eq:global_loss}. We first describe the motivation for the designing of the proposed FedWAN strategy and then present the learning problem applied to the distributed system.
+
+\subsection{Motivation}
+Nesterov momentum is an improved form of the Momentum Gradient Descent (MGD) algorithm that accelerates convergence and improves the optimization process. Traditional MGD accelerates convergence by modifying the weight update rule to include a velocity term. It adds a fraction of the previous update vector to the current gradient, effectively building up momentum over time in the direction of the global minima. This means that the weight is updated using the velocity term even in saddle points or local minima when the gradient is zero. Nesterov's momentum uses a slightly different form of the weight update with momentum. Instead of evaluating the gradient at the current parameters $(F(w_t))$, it first updates the weight using the velocity term and then evaluates the gradient at the updated parameters, $(F(w_t + \gamma v_t))$. So the gradient is calculated not at the current position, but slightly ahead in the direction of the accumulated momentum. The advantage of Nesterov momentum over standard momentum is its significantly faster convergence rate, especially when the loss function is complex. The 'lookahead' mechanism that it incorporates allows the optimizer to anticipate the future gradient direction, reducing oscillations and leading to more stable weight updates. This is especially significant in an FL system, where the distributed nature of the system leads to a slower convergence rate than centralized methods.
+
+\begin{algorithm}[!t]
+    \KwInput{Local iterations: $\tau$, Global model parameters: $w_k$, Global velocity: $v_k$}
+    \KwOutput{Updated local model parameters: $w_l$}
+  \textbf{ED Local Training}\;
+Initialize local dataset $D_i$\;
+Initialize local parameters: $w_i(0) = w_k$\;
+Initialize local velocity: $v_i(0) = v_k$\;
+\For{$t = 1$ \textbf{to} $\tau$}
+{
+        \ForEach{mini batch $b$}
+        {
+            Compute gradients $F(w_t)$\;
+            Compute velocity buffer $v_t$ using equation\;
+            $v_{t+1} = \mu v_t + \eta \nabla F_i(w_t + \mu v_t)$\;
+            Compute local NAG update for $w_t$ using $v_t$ based on equation\;
+            $w_{t+1} = w_t - v_{t+1}$\;
+        } 
+}
+\textbf{Return} $w_i, v_i$
+\caption{FedWAN - Client Side}
+\label{algo2}
+\end{algorithm}
+
+Further, data heterogeneity is a significant challenge in any distributed system. For EDs with different types of data, the directions of gradient descent may vary significantly for each ED. Accordingly, the aggregated direction of gradient descent at the server side may also deviate from the direction of global minima. In addition, data heterogeneity may lead to a biased global model, as some local models with different distributions may have a disproportionate influence on the final aggregated model. For this purpose, we need a weighted averaging scheme that aggregates the local updates based on their ability to generalize well, contributing better towards building a robust global model.
+
+In the following subsection, we apply the NAG algorithm and weighted aggregation to the distributed FL setup and describe the local and global update steps in the EDs and the central server.
+
+\subsection{Proposed Methodology}
+The local models of the EDs and the global model at the central server are initialized with the same model architecture, maintaining consistency in the dimensions of the model parameters and the velocity parameters. We define $t$ as the iteration index, and the global aggregation happens at $t = k\tau$ where \(\tau\) denotes the aggregation frequency and \(k\) denotes the communication round. The proposed method is illustrated in Fig.~\ref{fig:proposed_method} and shows the NAG algorithm applied at the ED level with weighted aggregation applied at the server side.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.45\textwidth]{images/fedwan2.png}
+    \caption{Weight averaging and Nesterov's Momentum of Federated Learning using the Proposed FedWAN strategy}
+    \label{fig:proposed_method}
+\end{figure}
+
+\subsubsection{Global Updates}
+
+At the server, the global model is initialized and the global velocity is set to zero. When the system is set up, the randomly initialized global model parameters are sent to the EDs, which initialize their own local model with these parameters. Once during each round of FL, when $t = k\tau$, the server receives the local model parameters and local velocities from each ED and performs aggregation. One of the main reasons for the lack of effectiveness of FedAvg in Non-IID data is due to different data distributions among the EDs. Therefore in the proposed strategy, when the EDs send their model parameters to the central server, they also send their local data distributions. For classification problems, sending this data distribution does not cause significant communication overhead compared to sending model parameters. 
+
+The central server performs weighted aggregation of the local model parameters using the fraction of EDs that are available on the network and capable of receiving and sending data in that particular communication round. This is defined by the number of EDs that can send their local model parameters and other information within some time $t_\text{wait}=10$ seconds, which is the duration the central server waits for communication in a particular round. After the time period $t_\text{wait}$, the central server aggregates the received model parameters in a weighted manner. If only one ED can send the local information in the current communication round, then aggregation is performed using its model parameters and the previous global model parameters. 
+
+The server also calculates the global data distribution at each round by aggregating the local data distributions. After obtaining the global data distribution, the weight for each ED is calculated using the KL divergence between the global data distribution and the individual local data distributions. For each ED, the KL divergence is calculated. This information is used to calculate the weight for each ED. The weight for each ED $i$ is proportional to \(\frac{1}{KL(i)}\). In this way, the EDs that have data distributions more similar to the global distribution are given more weight, and the dominant influence of some local models with highly skewed distributions is reduced. Therefore, the EDs that have trained on more diverse data are given a higher weight, thereby allowing the global model to generalize better. Fig.~\ref{fig:calc_weights_figure} illustrates the calculation of weights based on KL divergence between the local and global data distributions. For each round, the weights are recalculated based on the updated local data distributions. The server calculates the KL divergence for each ED $i$ using the following formulation.
+\begin{equation}
+KL_i(t) = \sum_{x=1}^{|D_i|} D_i(x) \left[\log\left(\frac{D_i(x)}{D_g(x)}\right)\right]
+\label{eq:kl_div}
+\end{equation}
+
+where $x$ denotes the class labels for the data. The following formulation determines the normalized weights \(\lambda_i\).
+
+\begin{equation}
+\lambda_i(t) = \frac{\frac{1}{KL_i(t)}}{\sum_{i \in N} \frac{1}{KL_i(t)}}
+\label{eq:lambda1}
+\end{equation}
+
+The above formulation is further simplified as follows.
+
+\begin{equation}
+\lambda_i(t) = \frac{KLI_i(t)}{\sum_{i \in N} KLI_i(t)}
+\label{eq:lambda2}
+\end{equation}
+
+where \( KLI_i(t) = \frac{1}{KL_i(t)} \).
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.45\textwidth]{images/fedwan data agg.drawio.png}
+    \caption{Calculation of weights for each ED using FedWAN}
+    \label{fig:calc_weights_figure}
+\end{figure}
+
+The server aggregates the global model parameters based on the calculated weights. However, since the velocity terms depend only on past local gradients to accelerate convergence, and do not contribute to the global model, they can be aggregated by simple averaging after normalizing based on the number of samples. Both aggregation equations at the server side are described as follows.
+
+\begin{equation}
+w(t) = \sum_{i \in N} \lambda_i w_i(t)
+\label{eq:weight_agg}
+\end{equation}
+
+\begin{equation}
+v(t) = \frac{\sum_{i=1}^{N} D_i v_i(t)}{D}
+\label{eq:vel_agg}
+\end{equation}
+
+where \(D_i\) is the number of local samples and $D$ is the total number of samples across all EDs.
+
+\subsubsection{Local Updates}
+
+After aggregation, the global model parameters and global velocity are sent to each ED, which updates its local model and local velocity accordingly. Then each ED performs NAG-based local training in parallel for \(\tau\) iterations. Firstly, the gradients are computed at lookahead parameters, which are obtained by adding the velocity term to the current parameters. Then, the velocity term is updated using the lookahead gradients. Finally, the weight update is performed using the velocity term. The local NAG updates on the EDs in each training round are defined as follows, where $i$ represents each ED and 1 \textless $i$ \textless $N$.
+
+\begin{equation}
+v_{t+1} = \mu v_t + \eta \nabla F_i(w_t + \mu v_t)
+\label{vel_update_local}
+\end{equation}
+\begin{equation}
+w_{t+1} = w_t - v_{t+1}
+\label{weight_update_local}
+\end{equation}
+
+\begin{figure*}[!t]
+    \centering
+    % Row of 4 graphs
+    \includegraphics[width=0.95\textwidth]{images/pies.png}
+    \caption{Non-IID Data Distribution for MNIST dataset in local EDs in the edge networks}
+    \label{fig:noniid-data-split}
+\end{figure*}
+
+\subsection{Convergence Analysis}
+In this section, we present the convergence analysis for the proposed FedWAN strategy and bound the loss function $F(w)$ between FedWAN and the optimal solution.
+
+\textit{\textbf{Assumptions}}
+\begin{enumerate}
+    \item The loss function  $F(w)$ is convex and \(\beta\)-smooth, i.e., \begin{equation}
+\|\nabla F(w_1) - \nabla F(w_2)\| \leq \beta \|w_1 - w_2\|
+\end{equation}
+    \item The gradient divergence for all EDs $i$ with parameters $w$ for Non-IID data distributions is bounded as follows.
+ \begin{equation}
+\|\nabla F_i(w) - \nabla F(w)\| \leq \delta_i
+\end{equation}
+where $\delta_i$ is the upper bound, which may be different for different EDs for Non-IID data.
+\end{enumerate}
+
+
+\textit{\textbf{Convergence Proof}}
+
+To prove that the proposed method converges with NAG updates, we establish a bound on the difference in the loss function $F(w)$ between FedNAG and the optimal solution. Since the loss function ($F$) is $\beta$-smooth, thus we write the following logic.
+\[F(x) - F(y) \leq \nabla F(y)^\top (x - y) + \frac{\beta}{2} \|x - y\|^2\]
+
+Here, we consider the decrease in the global loss after one iteration, formulated as follows.
+\[F(w(t+1)) - F(w(t) \leq \nabla F(w(t))^\top (w(t+1) - w(t))\] \[+ \frac{\beta}{2}
+\|w(t+1) - w(t)\|^2\]
+
+Expanding and rearranging terms based on weight update equations is derived as follows.
+\[F(w(t+1)) - F(w(t) \leq -\eta(1+\gamma)\left(1 -\frac{\beta\eta(1+\gamma)}{2}\right)\] \[\|\nabla F(w(t))\|^2 + V\]
+
+where $V$ is of the order of $\mathcal{O}(\|\nabla F(w(t))\|^2)$. Considering the optimal solution $F(w*)$, we derive the following logic.
+
+\[F(w(t)) - F(w^*) \leq \nabla F(w(t))^T (w(t) - w^*)\]
+
+\[F(w(T)) - F(w^*) \leq \frac{1}{T} \left( \theta \alpha - \frac{\rho t(\tau)}{\tau} \epsilon^2 \right)\]
+
+The loss decreases over time, and it can be seen from the above equation that FedWAN converges at the rate of $O(\frac{1}{T})$. 
+
+\section{Experimental Analysis}
+This section describes the convergence performance of FedWAN with Non-IID data splits compared to existing FL solutions with momentum including FedNAG, MFL, FedMom, and Mime through experiments on benchmark datasets. Then, we evaluate the performance of IID data as well, to confirm that FedWAN performs better than or equal to other state-of-the-art algorithms under all conditions.
+
+%Mention the method-threads
+
+\subsection{Experimental Setup and Datasets}
+In order to evaluate the convergence performance of FedWAN, we make use of two publicly available datasets, namely the MNIST (Modified National Institute of Standards and Technology) and CIFAR-10 (Canadian Institute For Advanced Research-10) for image classification. The MNIST dataset consists of 60,000 samples for training and 10,000 samples for testing. The dataset contains gray-scale handwritten images of digits containing 28 × 28 pixels. The CIFAR-10 contains 60,000 samples of 32x32 colour images in 10 classes, with 6000 images per class. The samples are split into 50,000 images for training and 10,000 images for testing. To target the efficiency of the proposed FedWAN strategy on Non-IID data, all our experiments contain unequal data distributions for each ED local dataset. This is done by varying the amounts of samples for each class label in the local datasets. The experiments are implemented using the Pytorch framework, a Python ML library based on the Torch framework. The experimental setup is executed using an HP 11th Gen Intel(R) Core(TM) i3-1125 CPU.
+
+For the performance analysis, a container-based approach is implemented using Docker, ensuring a modular and reproducible experimental setup. Separate Dockerfiles are created for the central server and EDs that contain the dependencies, configurations, and execution environments, needed for training and aggregation. Each container contains either the server or a separate ED, performing local computations on its assigned subset of data for each round. Each ED runs within its own container, performing local computations on its assigned data subset during each training round. After completing local training, the containers communicate their updates to a central server over a Docker bridge network. In the proposed synchronous FL environment, the central server performs aggregation after receiving parameters from containers within the waiting period. The experimental setup is shown in Fig \ref{fig:docker}.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.45\textwidth]{images/multithreading.png}
+    \caption{Cloud-based simulation setup of the proposed FedWAN strategy using Docker Swarm}
+    \label{fig:docker}
+\end{figure}
+
+\begin{figure*}[!t]
+    \centering
+    % Row of 4 graphs
+    \subfigure[Logistic Regression on MNIST]{
+        \includegraphics[width=0.45\textwidth]{images/logistic_noniid_mnist2.png} % Replace with actual image path
+    }
+    \subfigure[DNN on MNIST]{
+        \includegraphics[width=0.45\textwidth]{images/dnn_noniid_mnist2.png} % Replace with actual image path
+    }
+    \subfigure[CNN on MNIST]{
+        \includegraphics[width=0.45\textwidth]{images/cnn_noniid_mnist2.png} % Replace with actual image path
+    }
+    \subfigure[Logistic Regression on CIFAR-10]{
+        \includegraphics[width=0.45\textwidth]{images/logistic_noniid_cifar.png} % Replace with actual image path
+    }
+    \subfigure[DNN on CIFAR-10]{
+        \includegraphics[width=0.45\textwidth]{images/dnn_noniid_cifar.png} % Replace with actual image path
+    }
+    \subfigure[CNN on CIFAR-10]{
+        \includegraphics[width=0.45\textwidth]{images/cnn_noniid_cifar.png} % Replace with actual image path
+    }
+    \caption{Performance comparison of FedWAN with state-of-the-art momentum-based FL approaches on Non-IID data}
+    \label{fig:performance_noniid}
+\end{figure*}
+
+We compare the results of the various algorithms using three different models: Deep Neural Network (DNN), Convolutional Neural Network (CNN), and Logistic Regression models. The Logistic Regression model is a linear classifier that maps the flattened 28×28 image input directly to 10 output classes using a single fully connected layer. It applies the logarithm of softmax to produce class probabilities. This model is the simplest among the three, relying solely on a linear combination of input features for classification, making it suitable for baseline performance evaluation on image datasets. The second model or the DNN is a feedforward neural network that processes input images as flattened vectors of size 28×28. It consists of three fully connected layers: the first reduces the input dimensionality to 64, the second further reduces it to 32, and the last maps these features to 10 output classes. ReLU activation is applied after the first two layers to introduce non-linearity, while the final layer uses the softmax function for classification. 
+
+Finally, we use CNN, which is designed for image classification tasks and contains two convolutional layers followed by max-pooling and dropout layers to reduce overfitting. The first convolutional layer extracts 10 feature maps with a kernel size of 5, and the second extracts 20 feature maps, also with a kernel size of 5. After convolution and pooling, the output is flattened into a vector of size 320, which is fed into two fully connected layers with 320 and 50 neurons respectively. The network applies ReLU activation throughout and uses a final softmax function to output class probabilities. 
+
+
+\begin{table*}[!t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \caption{Performance of the Proposed FedWAN and State-of-the-art FL approaches on Non-IID MNIST within 30 iterations}
+    \begin{tabular}{lcccccc|cccccc}
+        \toprule
+        \textbf{Algorithm} & \multicolumn{6}{c}{\textbf{MNIST}} & \multicolumn{6}{c}{\textbf{CIFAR-10}} \\
+        \cmidrule(lr){2-7} \cmidrule(lr){8-13}
+        & \multicolumn{2}{c}{\textbf{Logistic Regression}} & \multicolumn{2}{c}{\textbf{DNN}} & \multicolumn{2}{c}{\textbf{CNN}} 
+        & \multicolumn{2}{c}{\textbf{Logistic Regression}} & \multicolumn{2}{c}{\textbf{DNN}} & \multicolumn{2}{c}{\textbf{CNN}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11} \cmidrule(lr){12-13}
+        & Acc (\%) & Time (s) & Acc (\%) & Time (s) & Acc (\%) & Time (s) 
+        & Acc (\%) & Time (s) & Acc (\%) & Time (s) & Acc (\%) & Time (s) \\
+        \midrule
+        \textbf{FedWAN}  & \textbf{90.6} & \textbf{385} & \textbf{92.5} & \textbf{493} & \textbf{92.5} & \textbf{541}
+                & \textbf{38.7} & \textbf{418} & \textbf{48.7} & \textbf{718} & \textbf{56.1} & \textbf{909} \\
+        FedNAG  & 88.7 & 396 & 91.6 & 512 & 95.3 & 572
+                & 38.1 & 429 & 44.6 & 729 & 55.4 & 879   \\
+        MFL     & 87.9 & 403 & 89.1 & 534 & 94.1 & 564
+                & 38.2 & 594 & 46.7 & 781 & 53.3 & 924   \\
+        FedMom  & 86.9 & 356 & 81.4 & 798 & 51.7 & 507
+                & 31.5 & 377 & 33.1 & 694 & 39.7 & 831  \\
+        Mime    & 86.9 & 523 & 67.2 & 609 & 60.4 & 547
+                & 39.0 & 575 & 34.7 & 763 & 38.5 & 918  \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:fl-momentum-comparison}
+\end{table*}
+
+\begin{table*}[!t]
+\centering
+\caption{Convergence Rate and Training Time Comparison of the Proposed FedWAN and State-of-the-art FL approaches}
+\label{tab:convergence_rate}
+\begin{tabular}{lcccccccccccc}
+\toprule
+\textbf{Accuracy} & \multicolumn{2}{c}{\textbf{FedWAN}} & \multicolumn{2}{c}{\textbf{FedNAG}} & \multicolumn{2}{c}{\textbf{MFL}}  & \multicolumn{2}{c}{\textbf{FedMom}} & \multicolumn{2}{c}{\textbf{Mime}} & \multicolumn{2}{c}{\textbf{FedAvg}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11} \cmidrule(lr){12-13}
+ & \textbf{Rounds} & \textbf{Time (s)} & \textbf{Rounds} & \textbf{Time (s)} & \textbf{Rounds} & \textbf{Time (s)}  & \textbf{Rounds} & \textbf{Time (s)} & \textbf{Rounds} & \textbf{Time (s)} & \textbf{Rounds} & \textbf{Time (s)} \\
+\midrule
+\textbf{85\% Accuracy} & 2  & 105  & 2  & 122  & 3  & 164 
+                       & 7  & 361  & 17  & 786 & 19  & 813  \\
+\textbf{90\% Accuracy} & 3  & 159  & 5  & 279  & 5  & 278  
+                       & 15  & 762  & 22  & 925  & 27  & 1023  \\
+\textbf{95\% Accuracy} & 7  & 377  & 9  & 516  & 11  & 621  
+                       & 26  & 872  & 31  & 1142  & 35  & 1374  \\
+\bottomrule
+\end{tabular}
+\label{tab:fl-accuracy-threshold}
+\end{table*}
+
+\subsection{Performance Comparison}
+Fig.~\ref{fig:performance_noniid} illustrates the performance of FedWAN in comparison with four other existing FL solutions with momentum on the MNIST and CIFAR-10 datasets, using three different models. In the experiments, data heterogeneity is introduced by assigning different amounts of samples for each class label in the local datasets, as illustrated in Fig \ref{fig:noniid-data-split}. This ensures that each client has an imbalanced representation of the class labels, mimicking real-world scenarios. The total number of samples for each client is 5000 for the experiments on MNIST and 8000 for the experiments on CIFAR-10. In all of the experiments, we set $\gamma$ = 0.9, $T$ = 40, $N$ = 5 and $\tau$ = 3. The learning rate $\eta$ is 0.001 for the experiments on MNIST and 0.01 for the experiments on CIFAR-10. 
+
+\begin{figure*}[!t]
+    \centering
+    % Row of 4 graphs
+    \subfigure[Logistic Regression]{
+        \includegraphics[width=0.29\textwidth]{images/logistic_iid_mnist.png} % Replace with actual image path
+    }
+    \subfigure[DNN]{
+        \includegraphics[width=0.29\textwidth]{images/dnn_iid_mnist} % Replace with actual image path
+    }
+    \subfigure[CNN]{
+        \includegraphics[width=0.29\textwidth]{images/cnn_iid_mnist.png} % Replace with actual image path
+    }
+    \caption{Performance comparison of FedWAN with state-of-the-art momentum-based FL approaches on IID data}
+    \label{fig:performance_iid}
+\end{figure*}
+
+\begin{figure}[!t]
+    \centering
+    \subfigure[Effect of momentum $\gamma$]{
+        \includegraphics[width=0.47\textwidth]{images/momentum_effect.png} % Replace with actual image path
+    }
+    \subfigure[Effect of aggregation frequency $\tau$]{
+        \includegraphics[width=0.47\textwidth]{images/agg_freq_effect.png} % Replace with actual image path
+    }
+    \caption{Selection of optimal hyperparameters for the proposed FedWAN strategy}
+    \label{fig:effect_hyperparameters}
+\end{figure}
+
+
+For the experiments on MNIST, we find that in all cases, FedWAN $>$ FedNAG $>$ MFL $>$ FedMom $>$ Mime, where "$>$" denotes 'better than'. It is seen that approaches that use locally updated momentum, which include FedWAN, FedNAG, and MFL, generally achieve faster convergence than those that do not. FedMom uses a more unstable server momentum update, and Mime uses the global momentum term in local updates, which can become outdated and may not align effectively with local training, leading to comparatively lower performance. It can further be seen that the weighted aggregation scheme of FedWAN means that even in the initial rounds, higher accuracy can be achieved. 
+
+For the experiments on the more challenging CIFAR-10 dataset, it can be seen that FedWAN performs at least up to the level of FedNAG, and better than FedNAG in some cases. For the noisy logistic regression model, the performance of FedWAN is similar to other approaches with momentum. Similarly for DNN, the performance is almost similar to the proposed FedWAN strategy showing a slight improvement compared to existing solutions. The experiments on CNN show that FedWAN gives an improvement in training accuracy and loss in the earlier stages, while later reaching the same levels as that of FedNAG. Generally, for the CIFAR-10 dataset, the performance is given by FedWAN $>$ FedNAG $>$ MFL $>$ Mime $\approx$ FedMom, where '$\approx$' denotes almost similar performance.
+
+Table~\ref{tab:fl-momentum-comparison} shows the accuracy obtained and time taken for different models and datasets after 30 local iterations of training, highlighting the difference in convergence rates on Non-IID data. From the table, it can be seen that FedWAN achieves higher accuracy than other approaches even in the initial training rounds, due to addressing the data heterogeneity problem that slows down convergence in usual FL scenarios. The improvement in convergence rate for FedWAN compared to other approaches is 3-12\%. In addition, Table~\ref{tab:convergence_rate} shows the convergence rate of FedWAN against the existing approaches on the MNIST dataset. The number of rounds of FL and the time taken to reach 85\%, 90\%, and 95\% testing accuracy are shown. The existing algorithms compared are four FL with momentum approaches along with the FedAvg algorithm.
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=0.5\textwidth]{images/momentum_effect.png}
+%     \caption{Effect of momentum $\gamma$}
+%     \label{fig:momentum_effect}
+% \end{figure}
+
+Although we target Non-IID data handling through the proposed FedWAN strategy, we show that FedWAN performs at least up to the same level as state-of-the-art methods on IID data as well. Fig.~\ref{fig:performance_iid} shows the performance of FL with Momentum approaches on IID data sampled from the MNIST dataset. From the results, it can be seen that the performance of FedWAN is almost identical to that of FedNAG in IID data settings. This is possible, since in IID data settings, the KL divergence and consequently the weights computed for aggregation for all EDs are almost the same. Thus each ED is given nearly equal weight and the weighted equation at the server resolves into one of plain averaging as in FedNAG. 
+
+\subsection{Effect of hyperparameters}
+In this section, we analyze the effects of changing hyperparameters such as momentum coefficient $\gamma$, number of epochs for local training or aggregation frequency $\tau$, and the number of workers $N$.
+
+\subsubsection{Effect of momentum}
+The effect of changing momentum coefficient $\gamma$ on model performance is shown in Fig.~10(a). The experiments are performed using the CNN model on MNIST, with a number of local epochs $\tau$ = 3, $N$ = 5, and learning rate $\eta$ = 0.001. The performance of the FedWAN algorithm is compared with momentum values of 0.1, 0.3, 0.6, and 0.9. In standard momentum as well as Nesterov momentum, the value of the momentum coefficient determines how much importance is given to the effect of past gradients, or how much inertia the model builds up when moving towards convergence. It can be seen that the higher the momentum coefficient for the FL system, the faster the convergence. The fastest convergence is found to be for a momentum value of $\gamma$ = 0.9. 
+
+\subsubsection{Effect of global aggregation frequency}
+Fig.~10(b) shows the effect of varying the number of epochs of local training conducted by each ED in each round. For a fixed number of total iterations, this corresponds to the frequency of global aggregation or $\tau$. The experiments are performed using the same CNN model on MNIST, with $N$ = 5, $\gamma$ = 0.9, and learning rate $\eta$ = 0.001. It can be seen that the rate of convergence is highest for $\tau = 3$, and in general as the aggregation frequency increases, the rate of convergence increases. This is because lower aggregation frequency means that the global model aggregation is performed more often, and subsequently the local models are synchronized more often. 
+
+\subsubsection{Effect of scalability}
+The results of experiments on varying numbers of EDs in the FL system show that FedWAN can perform better than state-of-the-art methods, retaining almost similar accuracy and loss values even with highly Non-IID distributions. This is because in each case, the algorithm gives higher weight to local models with more diverse data, leading to the development of a global model that can generalize well. The scalability of the system is illustrated in Table~\ref{tab:scalability}. 
+
+\begin{table}[!t]
+\centering
+\caption{Scalability of the FedWAN strategy}
+\begin{tabular}{@{}lcccc@{}} % Fix column count
+\toprule
+\textbf{Number of EDs} & \textbf{10} & \textbf{100} & \textbf{500} & \textbf{1000} \\ \midrule
+\textbf{Accuracy (\%)} & 85.3 & 83.7 & 80.2 & 76.5 \\
+\textbf{Loss} & 0.45 & 0.48 & 0.55 & 0.65 \\ 
+\bottomrule
+\end{tabular}
+\label{tab:scalability}
+\end{table}
+
+\section{Conclusion}
+In this paper, we have studied momentum-accelerated FL approaches that can achieve faster convergence than conventional gradient descent methods. We have identified that incorporating Nesterov momentum during local training is more advantageous than using simple momentum since it evaluates the gradients at some future lookahead parameters than at the current parameters. In addition, we have proposed a weighted aggregation scheme on the server side that handles local Non-IID data distributions. Based on simulations conducted on publicly available datasets with various models, it is seen that the proposed method performs better than other FL with momentum techniques on Non-IID data, improving the convergence rate by 3-12\%. In addition, the proposed method matches the performance of other methods on IID data, proving the robustness and generalization of the approach. Future directions for the work includes incorporating adaptive momentum in FL, personalization for Non-IID data, and managing communication overhead. The challenge of communication overhead is especially relevant in momentum-based approaches since the velocity terms are also being transmitted across the network. Techniques such as quantization, sparsification, or adaptive selection of EDs could be used to reduce the size of data being sent. 
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{ref.bib}
+
+
+\end{document}
+

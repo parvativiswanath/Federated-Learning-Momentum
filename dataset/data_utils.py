@@ -51,7 +51,7 @@ def load_emnist_dataset(isTrainDataset=True) -> Dataset:
     return emnistDataset
 
 
-def split_client_datasets(dataset, clientNum, roundNum):
+def split_iid(dataset, clientNum, roundNum):
     countPerSet = len(dataset) // (clientNum * roundNum)
     clientDatasets = [[] for _ in range(clientNum)]
     print('Length of client datasets')
@@ -65,7 +65,7 @@ def split_client_datasets(dataset, clientNum, roundNum):
 
     return clientDatasets
 
-def split_client_datasets_non_iid(dataset, clientNum, roundNum):
+def split_non_iid_unequal(dataset, clientNum, roundNum):
     total_samples = len(dataset)
     if total_samples < clientNum * roundNum:
         raise ValueError("Not enough samples in the dataset to distribute among all clients and rounds.")
@@ -153,7 +153,7 @@ def generate_random_class_distribution_emnist(
     
     return class_distributions
 
-def split_non_iid_client_datasets(dataset, clientNum, roundNum,emnist):
+def split_non_iid_by_class_dist(dataset, clientNum, roundNum, emnist):
     if emnist:
         class_distributions = generate_random_class_distribution_emnist(clientNum)
     else:
@@ -195,7 +195,7 @@ def split_non_iid_client_datasets(dataset, clientNum, roundNum,emnist):
 
     return client_datasets
 
-def test(dataset, clientNum, emnist=False):
+def split_non_iid_random_dist(dataset, clientNum, emnist=False):
     class_distributions = generate_random_class_distribution_mnist(clientNum)
     
     print('Class distributions for all clients are - ')
@@ -224,7 +224,7 @@ def test(dataset, clientNum, emnist=False):
 
     return client_datasets
 
-def test2(dataset,clientNum):
+def split_non_iid_class_proportional(dataset, clientNum):
     # client_classes = {
     # #i+1: random.sample(range(10), i+6) for i in range(clientNum)
     # i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
@@ -236,7 +236,6 @@ def test2(dataset,clientNum):
 
     # Initialize client datasets
     client_datasets = {client: [] for client in client_classes}
-    extra_dataset = {}
 
     # Collect indices for each class
     class_indices = defaultdict(list)
@@ -256,7 +255,6 @@ def test2(dataset,clientNum):
         client_datasets[client].extend(extra_samples)
 
     # Allocate samples to clients
-    subset_size_per_class = 5000
     for client, classes in client_classes.items():
         for cls in classes:
             client_datasets[client].extend(class_indices[cls])

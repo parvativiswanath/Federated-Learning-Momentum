@@ -6,21 +6,19 @@ from torch import optim
 
 from tqdm import tqdm
 
+##### TRAINING HYPERPARAMETERS #####
+EPOCHS = 3
+LEARNING_RATE = 0.001
+MOMENTUM = 0.9
+####################################
 
 
 def train(model, dataset):
-
-    ##### TRAINING HYPERPARAMETERS #####
-    epochs = 3
-    learningRate = 0.001
-    momentum = 0.9
-    #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
-    optimizer = optim.SGD(model.parameters(), lr=learningRate)
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.NLLLoss()
-    ####################################
 
     print("Training:")
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
@@ -46,39 +44,25 @@ def train(model, dataset):
     return model
 
 def train_with_momentum(model, dataset, velocity):
-    ##### TRAINING HYPERPARAMETERS #####
-    epochs = 3
-    learningRate = 0.001
-    momentum = 0.9
-    #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
-    optimizer = optim.SGD(model.parameters(), lr=learningRate)
     criterion = nn.NLLLoss()
-    ####################################
-
     model.train()
     print("Training:")
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
 
-            # Reset such that only gradients that pertain
-            # to the current input are used
             model.zero_grad()
 
-            # Forward
             output = model(input)
-            #print(f"Input shape: {input.shape}, Target shape: {target.shape}")
-            # No need to shape target to one-hot encoding
-            #print(f"Model output shape: {output.shape}, Target shape: {target.shape}")
             loss = criterion(output, target)
             loss.backward()
             with torch.no_grad():
                 for name, param in model.named_parameters():
-                    if param.grad is not None: 
-                        # velocity[name] = momentum * velocity[name] + (1-momentum)*param.grad    #correct equation
-                        velocity[name] = momentum * velocity[name] + param.grad      #pytorch implementation
-                        param.add_(-(learningRate * velocity[name].detach_()))
+                    if param.grad is not None:
+                        # velocity[name] = MOMENTUM * velocity[name] + (1-MOMENTUM)*param.grad    #correct equation
+                        velocity[name] = MOMENTUM * velocity[name] + param.grad      #pytorch implementation
+                        param.add_(-(LEARNING_RATE * velocity[name].detach_()))
 
             epochLoss += loss.item()
 
@@ -89,45 +73,29 @@ def train_with_momentum(model, dataset, velocity):
     return model, velocity
 
 def train_with_NAG(model, dataset, velocity):
-    ##### TRAINING HYPERPARAMETERS #####
-    epochs = 3
-    learningRate = 0.001
-    momentum = 0.9
-    #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
-    optimizer = optim.SGD(model.parameters(), lr=learningRate)
     criterion = nn.NLLLoss()
-    ####################################
-
     model.train()
     print("Training:")
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
 
-            # Reset such that only gradients that pertain
-            # to the current input are used
             model.zero_grad()
 
-            # Forward
             output = model(input)
-
-            # No need to shape target to one-hot encoding
             loss = criterion(output, target)
             loss.backward()
             with torch.no_grad():
                 for name, param in model.named_parameters():
-                    if param.grad is not None: 
+                    if param.grad is not None:
                         # Update velocity using momentum
-                            if name not in velocity:
-                                velocity[name] = torch.zeros_like(param.grad)
-                            velocity[name].mul_(momentum).add_(-learningRate * param.grad)
-                            param.add_(velocity[name])
-                            # # Apply Nesterov momentum update
-                            # param.add_(momentum * velocity[name] - learningRate * param.grad)
-
-                            #testing lookahead nesterov step
-                            param.add_(momentum * velocity[name])
+                        if name not in velocity:
+                            velocity[name] = torch.zeros_like(param.grad)
+                        velocity[name].mul_(MOMENTUM).add_(-LEARNING_RATE * param.grad)
+                        param.add_(velocity[name])
+                        # Apply Nesterov lookahead step
+                        param.add_(MOMENTUM * velocity[name])
 
             epochLoss += loss.item()
 
@@ -137,51 +105,28 @@ def train_with_NAG(model, dataset, velocity):
 
     return model, velocity
 
-        # for i, (velocity, parameter, gradient) in enumerate(zip(self.velocity, parameters, gradients)):
-        #     # Update velocity: velocity = momentum * velocity - lr * gradient
-        #     velocity = self.momentum * velocity - self.lr * gradient
-
-        #     # Update parameter using Nesterov update: parameter += velocity
-        #     parameter += velocity
-
-        #     # Update attributes
-        #     self.velocity[i] = velocity
-
 
 def train_mime(model, dataset, global_velocity):
-    ##### TRAINING HYPERPARAMETERS #####
-    epochs = 3
-    learningRate = 0.001
-    momentum = 0.9
-    #optimizer = optim.SGD(model.parameters(), lr=learningRate, momentum=momentum)
-    optimizer = optim.SGD(model.parameters(), lr=learningRate)
     criterion = nn.NLLLoss()
-    ####################################
 
     global_model = deepcopy(model)
 
     model.train()
     print("Training:")
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
 
         epochLoss = 0
         for input, target in tqdm(dataset):
 
-            # Reset such that only gradients that pertain
-            # to the current input are used
             model.zero_grad()
 
-            # Forward
             output = model(input)
-
-            # No need to shape target to one-hot encoding
             loss = criterion(output, target)
             loss.backward()
             with torch.no_grad():
                 for name, param in model.named_parameters():
-                    if param.grad is not None: 
-                        # velocity[name] = momentum * velocity[name] + (1-momentum)*param.grad    #correct equation
-                        param.add_(-learningRate*(momentum*global_velocity[name].detach_() + param.grad))
+                    if param.grad is not None:
+                        param.add_(-LEARNING_RATE * (MOMENTUM * global_velocity[name].detach_() + param.grad))
 
             epochLoss += loss.item()
 
