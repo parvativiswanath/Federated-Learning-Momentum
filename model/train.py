@@ -1,10 +1,11 @@
 from copy import deepcopy
+import logging
 import torch
 import torch.nn as nn
 
 from torch import optim
 
-from tqdm import tqdm
+logger = logging.getLogger('fedwan')
 
 ##### TRAINING HYPERPARAMETERS #####
 EPOCHS = 3
@@ -18,11 +19,11 @@ def train(model, dataset):
     criterion = nn.NLLLoss()
     device = next(model.parameters()).device
 
-    print("Training:")
+    logger.debug("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
-        for input, target in tqdm(dataset):
+        for input, target in dataset:
             input, target = input.to(device), target.to(device)
 
             optimizer.zero_grad()
@@ -38,7 +39,7 @@ def train(model, dataset):
 
         epochLoss /= len(dataset)
 
-        print(f"EPOCH {epoch} LOSS: {epochLoss}")
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
 
     return model
 
@@ -46,11 +47,11 @@ def train_with_momentum(model, dataset, velocity):
     criterion = nn.NLLLoss()
     device = next(model.parameters()).device
     model.train()
-    print("Training:")
+    logger.debug("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
-        for input, target in tqdm(dataset):
+        for input, target in dataset:
             input, target = input.to(device), target.to(device)
 
             model.zero_grad()
@@ -69,7 +70,7 @@ def train_with_momentum(model, dataset, velocity):
 
         epochLoss /= len(dataset)
 
-        print(f"EPOCH {epoch} LOSS: {epochLoss}")
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
 
     return model, velocity
 
@@ -77,11 +78,11 @@ def train_with_NAG(model, dataset, velocity):
     criterion = nn.NLLLoss()
     device = next(model.parameters()).device
     model.train()
-    print("Training:")
+    logger.debug("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
-        for input, target in tqdm(dataset):
+        for input, target in dataset:
             input, target = input.to(device), target.to(device)
 
             model.zero_grad()
@@ -104,7 +105,7 @@ def train_with_NAG(model, dataset, velocity):
 
         epochLoss /= len(dataset)
 
-        print(f"EPOCH {epoch} LOSS: {epochLoss}")
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
 
     return model, velocity
 
@@ -116,11 +117,11 @@ def train_mime(model, dataset, global_velocity):
     global_model = deepcopy(model)
 
     model.train()
-    print("Training:")
+    logger.debug("Training:")
     for epoch in range(EPOCHS):
 
         epochLoss = 0
-        for input, target in tqdm(dataset):
+        for input, target in dataset:
             input, target = input.to(device), target.to(device)
 
             model.zero_grad()
@@ -137,7 +138,7 @@ def train_mime(model, dataset, global_velocity):
 
         epochLoss /= len(dataset)
 
-        print(f"EPOCH {epoch} LOSS: {epochLoss}")
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
 
     #Compute full batch gradient based on server parameters
     data, target = next(iter(dataset))
@@ -155,6 +156,90 @@ def train_mime(model, dataset, global_velocity):
 
 
 
+def train_fedprox(model, dataset, global_params, mu=0.01):
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
+    criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
+    model.train()
+    logger.debug("Training (FedProx):")
+    for epoch in range(EPOCHS):
+        epochLoss = 0
+        for input, target in dataset:
+            input, target = input.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = model(input)
+            loss = criterion(output, target)
+            prox = sum(
+                ((p - global_params[n].detach()) ** 2).sum()
+                for n, p in model.named_parameters()
+            )
+            loss = loss + (mu / 2) * prox
+            loss.backward()
+            optimizer.step()
+            epochLoss += loss.item()
+        epochLoss /= len(dataset)
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
+    return model
+
+
+def train_fednova(model, dataset):
+    optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
+    criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
+    model.train()
+    logger.debug("Training (FedNova):")
+    tau = 0
+    for epoch in range(EPOCHS):
+        epochLoss = 0
+        for input, target in dataset:
+            input, target = input.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = model(input)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+            epochLoss += loss.item()
+            tau += 1
+        epochLoss /= len(dataset)
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
+    return model, tau
+
+
+def train_scaffold(model, dataset, c_i, c_global):
+    criterion = nn.NLLLoss()
+    device = next(model.parameters()).device
+    model.train()
+    w_start = {name: param.clone().detach() for name, param in model.named_parameters()}
+    total_steps = 0
+    logger.debug("Training (SCAFFOLD):")
+    for epoch in range(EPOCHS):
+        epochLoss = 0
+        for input, target in dataset:
+            input, target = input.to(device), target.to(device)
+            model.zero_grad()
+            output = model(input)
+            loss = criterion(output, target)
+            loss.backward()
+            with torch.no_grad():
+                for name, param in model.named_parameters():
+                    if param.grad is not None:
+                        corrected = param.grad + c_global[name] - c_i[name]
+                        param.add_(-LEARNING_RATE * corrected)
+            epochLoss += loss.item()
+            total_steps += 1
+        epochLoss /= len(dataset)
+        logger.debug(f"EPOCH {epoch} LOSS: {epochLoss}")
+    # Option II control variate update: delta_c_i = -c_global + (w_start - w_final) / (K * lr)
+    delta_c_i = {}
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            delta_c_i[name] = (
+                -c_global[name].clone()
+                + (w_start[name] - param.data) / (total_steps * LEARNING_RATE)
+            )
+    return model, delta_c_i
+
+
 #ORIGINAL TESTING CODE
 # def test(model, testSet):
 #     print("Testing:")
@@ -168,7 +253,7 @@ def train_mime(model, dataset, global_velocity):
 #     return correct / total
 
 def test(model,testSet):
-    print("Testing:")
+    logger.debug("Testing:")
     criterion = nn.NLLLoss()
     device = next(model.parameters()).device
     model.eval()

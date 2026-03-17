@@ -1,10 +1,13 @@
 from collections import Counter, defaultdict
+import logging
 import os
 import random
 
 import torchvision
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets
+
+logger = logging.getLogger('fedwan')
 
 
 def load_mnist_dataset(isTrainDataset=True) -> Dataset:
@@ -51,17 +54,43 @@ def load_emnist_dataset(isTrainDataset=True) -> Dataset:
     return emnistDataset
 
 
+def load_emnist_bymerge_dataset(isTrainDataset=True) -> Dataset:
+    return datasets.EMNIST(
+        os.path.dirname(os.path.realpath(__file__)) + "/data",
+        split="bymerge",
+        train=isTrainDataset,
+        download=True,
+        transform=torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.1307,), (0.3081,)),
+        ]),
+    )
+
+
+def load_svhn_dataset(isTrainDataset=True) -> Dataset:
+    split = 'train' if isTrainDataset else 'test'
+    return datasets.SVHN(
+        os.path.dirname(os.path.realpath(__file__)) + "/data",
+        split=split,
+        download=True,
+        transform=torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.4376, 0.4437, 0.4728), (0.1980, 0.2010, 0.1970)),
+        ]),
+    )
+
+
 def split_iid(dataset, clientNum, roundNum):
     countPerSet = len(dataset) // (clientNum * roundNum)
     clientDatasets = [[] for _ in range(clientNum)]
-    print('Length of client datasets')
+    logger.debug('Length of client datasets')
     for client in range(clientNum):
         for round in range(roundNum):
             low = countPerSet * (round + client * roundNum)
             high = low + countPerSet
             subsetIndices = [i for i in range(low, high)]
             clientDatasets[client].append(Subset(dataset, subsetIndices))
-            print(f'len(clientDatasets[{client}][{round}]: ',len(clientDatasets[client][round]))
+            logger.debug(f'len(clientDatasets[{client}][{round}]: {len(clientDatasets[client][round])}')
 
     return clientDatasets
 
@@ -104,7 +133,7 @@ def split_non_iid_unequal(dataset, clientNum, roundNum):
                 remaining_indices = remaining_indices[num_samples:]  # Update remaining indices
             
             clientDatasets[client].append(Subset(dataset, client_data_indices))
-            print(f'len(clientDatasets[{client}][{round}]): ', len(clientDatasets[client][round]))
+            logger.debug(f'len(clientDatasets[{client}][{round}]): {len(clientDatasets[client][round])}')
     
     return clientDatasets
 
@@ -158,8 +187,7 @@ def split_non_iid_by_class_dist(dataset, clientNum, roundNum, emnist):
         class_distributions = generate_random_class_distribution_emnist(clientNum)
     else:
         class_distributions = generate_random_class_distribution_mnist(clientNum)
-    print('class distributions for all clients are - ')
-    print(class_distributions)
+    logger.debug(f'class distributions for all clients are - {class_distributions}')
     # Step 1: Organize dataset by class
     data_by_class = defaultdict(list)
     for idx, (_, label) in enumerate(dataset):  # Assuming dataset is iterable and returns (data, label)
@@ -198,8 +226,7 @@ def split_non_iid_by_class_dist(dataset, clientNum, roundNum, emnist):
 def split_non_iid_random_dist(dataset, clientNum, emnist=False):
     class_distributions = generate_random_class_distribution_mnist(clientNum)
     
-    print('Class distributions for all clients are - ')
-    print(class_distributions)
+    logger.debug(f'Class distributions for all clients are - {class_distributions}')
     
     data_by_class = defaultdict(list)
     for idx, (_, label) in enumerate(dataset):
@@ -224,14 +251,10 @@ def split_non_iid_random_dist(dataset, clientNum, emnist=False):
 
     return client_datasets
 
-def split_non_iid_class_proportional(dataset, clientNum):
-    # client_classes = {
-    # #i+1: random.sample(range(10), i+6) for i in range(clientNum)
-    # i+1: random.sample(range(10), (i+1)*2) for i in range(clientNum)
-    # }
-
+def split_non_iid_class_proportional(dataset, clientNum, num_classes=10):
     client_classes = {
-    i+1: random.sample(range(10), (i+1)*2) for i in reversed(range(clientNum))
+        i+1: random.sample(range(num_classes), min((i+1)*2, num_classes))
+        for i in reversed(range(clientNum))
     }
 
     # Initialize client datasets
@@ -268,7 +291,7 @@ def split_non_iid_class_proportional(dataset, clientNum):
     client_datasets = [Subset(dataset, indices)
                     for indices in client_datasets.values()]
     for i, client_dataset in enumerate(client_datasets):
-        print(f"Client {i + 1} size: {len(client_dataset)}")
+        logger.debug(f"Client {i + 1} size: {len(client_dataset)}")
 
     # Analyze data distribution for each client
     for i, client_dataset in enumerate(client_datasets):
@@ -277,10 +300,8 @@ def split_non_iid_class_proportional(dataset, clientNum):
         label_counts = Counter(labels)
 
         # Display the class distribution
-        print(f"Client {i + 1} Class Distribution:")
-        for cls, count in sorted(label_counts.items()):
-            print(f"  Class {cls}: {count} samples")
-        print("-" * 30)
+        dist_str = ", ".join(f"cls {cls}: {count}" for cls, count in sorted(label_counts.items()))
+        logger.debug(f"Client {i + 1} Class Distribution: {dist_str}")
 
     return client_datasets
 
