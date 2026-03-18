@@ -3,6 +3,7 @@ import logging
 import os
 import random
 
+import numpy as np
 import torchvision
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets
@@ -305,6 +306,40 @@ def split_non_iid_class_proportional(dataset, clientNum, num_classes=10):
 
     return client_datasets
 
+
+
+def split_non_iid_dirichlet(dataset, num_clients, num_classes, alpha=0.5):
+    """Dirichlet(alpha) allocation — standard FL heterogeneity benchmark.
+    Lower alpha → more heterogeneous; alpha=0.5 is the typical default."""
+    class_indices = defaultdict(list)
+    for idx, (_, label) in enumerate(dataset):
+        class_indices[label].append(idx)
+
+    client_indices = [[] for _ in range(num_clients)]
+
+    for cls in range(num_classes):
+        indices = class_indices.get(cls, [])
+        if not indices:
+            continue
+        np.random.shuffle(indices)
+        proportions = np.random.dirichlet([alpha] * num_clients)
+        counts = (proportions * len(indices)).astype(int)
+        # Distribute any rounding remainder
+        remainder = len(indices) - counts.sum()
+        for r in range(remainder):
+            counts[r % num_clients] += 1
+        start = 0
+        for i, count in enumerate(counts):
+            client_indices[i].extend(indices[start:start + count])
+            start += count
+
+    for i in range(num_clients):
+        np.random.shuffle(client_indices[i])
+
+    client_datasets = [Subset(dataset, idxs) for idxs in client_indices]
+    for i, cd in enumerate(client_datasets):
+        logger.debug(f"Dirichlet client {i+1} size: {len(cd)}")
+    return client_datasets
 
 
 def get_dataloader(dataset, batchSize=64):

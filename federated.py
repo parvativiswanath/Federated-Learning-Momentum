@@ -295,7 +295,7 @@ def fed_wan(client_models, client_velocities, client_distributions, round, num_c
         averaged_velocity[name] /= len(client_velocities)
     vel_agg_time = time.perf_counter() - vel_start
 
-    return averaged_model, averaged_velocity, vel_agg_time
+    return averaged_model, averaged_velocity, sorted(weights.tolist(), reverse=True), vel_agg_time
 
 
 def fed_mom(client_models, serverModel, globalVelocity):
@@ -384,12 +384,15 @@ def print_velocities(velocity, label="Velocity"):
         lines.append(f" - {name}: shape={tensor.shape}, size={tensor.numel()}")
     logger.debug("\n".join(lines))
 
-def federated(algo, dataset='mnist'):
+def federated(algo, dataset='mnist', num_clients=5, participation_rate=1.0,
+              split='proportional', alpha=0.5):
+    import random as _random
     start_time = time.time()
-    num_clients = 5
     training_rounds = 15
+    clients_per_round = max(1, round(participation_rate * num_clients))
 
-    log_path = os.path.join(output_dir, f'federated_log_{dataset}_{algo}.log')
+    run_tag = f'_N{num_clients}_P{participation_rate}'
+    log_path = os.path.join(output_dir, f'federated_log_{dataset}_{algo}{run_tag}.log')
     _configure_logger(log_path)
 
     cfg = DATASET_CONFIGS[dataset]
@@ -399,13 +402,23 @@ def federated(algo, dataset='mnist'):
     in_channels = cfg['in_channels']
     input_size  = cfg['input_size']
 
-    clientDatasets = data_utils.split_non_iid_class_proportional(trainSet, num_clients, num_classes)
+    if split == 'dirichlet':
+        clientDatasets = data_utils.split_non_iid_dirichlet(trainSet, num_clients, num_classes, alpha)
+    else:
+        clientDatasets = data_utils.split_non_iid_class_proportional(trainSet, num_clients, num_classes)
     testLoader = data_utils.get_dataloader(testSet)
 
-    filename = os.path.join(output_dir, f'federated_metrics_{dataset}_{algo}.csv')
+    filename = os.path.join(output_dir, f'federated_metrics_{dataset}_{algo}{run_tag}.csv')
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["round", f"time_{algo}", f"accuracy_{algo}", f"loss_{algo}", "agg_time_s"])
+
+    # FedWAN weight distribution file (one row per round)
+    weights_filename = None
+    if algo == 'fedwan':
+        weights_filename = os.path.join(output_dir, f'fedwan_weights_{dataset}{run_tag}.csv')
+        with open(weights_filename, mode='w', newline='') as wf:
+            csv.writer(wf).writerow(['round'] + [f'w_{i}' for i in range(clients_per_round)])
 
     global client_models
     global client_velocities
@@ -432,7 +445,9 @@ def federated(algo, dataset='mnist'):
         server_c = {name: torch.zeros_like(param) for name, param in serverModel.named_parameters()}
 
     for rnd in range(training_rounds):
-        print(f"[{algo}/{dataset}] Round {rnd+1}/{training_rounds}", flush=True)
+        selected = sorted(_random.sample(range(num_clients), clients_per_round))
+        print(f"[{algo}/{dataset} N={num_clients} P={participation_rate}] "
+              f"Round {rnd+1}/{training_rounds} ({len(selected)} clients)", flush=True)
 
         client_models.clear()
         client_velocities.clear()
@@ -442,7 +457,7 @@ def federated(algo, dataset='mnist'):
         client_steps.clear()
         client_scaffold_deltas.clear()
         client_threads = []
-        for client in range(num_clients):
+        for client in selected:
             if algo == "fedavg":
                 t = Thread(
                     target=client_training,
@@ -503,7 +518,8 @@ def federated(algo, dataset='mnist'):
         elif algo == "mfl" or algo == "fednag":
             serverModel, serverVelocity, _ = fed_momentum_nag(client_models, client_velocities)
         elif algo == "fedwan":
-            serverModel, serverVelocity, _ = fed_wan(client_models, client_velocities, client_distributions, rnd, num_clients)
+            serverModel, serverVelocity, round_weights, _ = fed_wan(
+                client_models, client_velocities, client_distributions, rnd, num_clients)
         elif algo == "fedmom":
             serverModel, serverVelocity = fed_mom(client_models, serverModel, serverVelocity)
         elif algo == "mime":
@@ -530,6 +546,10 @@ def federated(algo, dataset='mnist'):
         with open(filename, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([rnd + 1, curr_time, testAcc, testLoss, round(agg_time, 6)])
+
+        if weights_filename is not None:
+            with open(weights_filename, mode='a', newline='') as wf:
+                csv.writer(wf).writerow([rnd + 1] + round_weights)
 
 
 if __name__ == "__main__":

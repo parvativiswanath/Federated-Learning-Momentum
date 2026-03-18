@@ -35,7 +35,7 @@ def plot():
     fig, (ax_acc, ax_loss) = plt.subplots(1, 2, figsize=(13, 5))
 
     for algo in ALGOS:
-        csv_path = os.path.join(output_dir, f'federated_metrics_{DATASET}_{algo}.csv')
+        csv_path = os.path.join(output_dir, f'federated_metrics_{DATASET}_{algo}_N5_P1.0.csv')
         if not os.path.exists(csv_path):
             print(f"Warning: {csv_path} not found — skipping {algo}", flush=True)
             continue
