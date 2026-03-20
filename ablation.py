@@ -37,6 +37,7 @@ from federated import (
     fed_momentum_nag,
     fed_wan,
     get_label_distribution,
+    client_data_sizes as fed_client_data_sizes,
     device,
     output_dir,
 )
@@ -81,14 +82,14 @@ def run_round(server_model, server_velocity, client_datasets, use_nag):
             with lock:
                 models.append(trained_model)
                 velocities.append(trained_vel)
+                distributions.append(dist)
+                data_sizes.append(data_size)
         else:
             trained_model = train(model, loader)
             with lock:
                 models.append(trained_model)
-
-        with lock:
-            distributions.append(dist)
-            data_sizes.append(data_size)
+                distributions.append(dist)
+                data_sizes.append(data_size)
 
     threads = [Thread(target=client_fn, args=(c,)) for c in range(NUM_CLIENTS)]
     for t in threads:
@@ -136,6 +137,8 @@ def run_variant(name, use_nag, use_kl_weights, train_set, test_set):
 
         if use_nag and use_kl_weights:
             # FedWAN: NAG + KL-weighted aggregation
+            fed_client_data_sizes.clear()
+            fed_client_data_sizes.extend(data_sizes)
             server_model, server_velocity, _, _ = fed_wan(
                 models, velocities, distributions, rnd, NUM_CLIENTS
             )
@@ -147,6 +150,8 @@ def run_variant(name, use_nag, use_kl_weights, train_set, test_set):
         elif use_kl_weights:
             # FedAvg + KL weights: plain SGD + KL-weighted aggregation.
             # fed_wan needs velocity lists — supply dummy zeros and discard result.
+            fed_client_data_sizes.clear()
+            fed_client_data_sizes.extend(data_sizes)
             dummy_velocities = [
                 {n: torch.zeros_like(p) for n, p in server_model.named_parameters()}
                 for _ in models
