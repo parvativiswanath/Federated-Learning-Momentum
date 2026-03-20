@@ -1,0 +1,242 @@
+"""
+Ablation study for FedWAN.
+
+Isolates the contribution of each component by running four variants:
+  1. Vanilla FedAvg       -- plain SGD clients,  uniform aggregation
+  2. FedAvg + NAG         -- NAG clients,         uniform aggregation
+  3. FedAvg + KL weights  -- plain SGD clients,  KL-weighted aggregation
+  4. FedWAN               -- NAG clients,         KL-weighted aggregation
+
+Reuses fed_avg / fed_momentum_nag / fed_wan / get_label_distribution
+from federated.py, and train / train_with_NAG / test from model/train.py.
+
+Settings: MNIST, 5 clients, full participation, proportional Non-IID split,
+          15 rounds (matching the main federated.py default).
+
+Output
+------
+- Console: per-round progress + final summary table
+- ablation_results.csv: one row per variant with final metrics
+"""
+
+import csv
+import os
+import time
+from copy import deepcopy
+from threading import Thread, Lock
+
+import torch
+
+from dataset import data_utils
+from model.layers import CNN
+from model.train import train, train_with_NAG, test
+
+# Import aggregation helpers directly from federated.py
+from federated import (
+    fed_avg,
+    fed_momentum_nag,
+    fed_wan,
+    get_label_distribution,
+    device,
+    output_dir,
+)
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+TRAINING_ROUNDS = 15
+NUM_CLIENTS     = 5
+NUM_CLASSES     = 10
+
+# ---------------------------------------------------------------------------
+# Per-round client runner
+# ---------------------------------------------------------------------------
+# The client_training_* functions in federated.py mutate module-level globals,
+# so we drive a clean local loop here.  All training and aggregation calls are
+# delegated to the imported functions above.
+
+def run_round(server_model, server_velocity, client_datasets, use_nag):
+    """
+    Train all clients in parallel for one round.
+
+    Returns
+    -------
+    models        : list of trained client models
+    velocities    : list of client velocities (empty list when use_nag=False)
+    distributions : list of label-count dicts (always collected)
+    data_sizes    : list of dataset sizes per client
+    """
+    models, velocities, distributions, data_sizes = [], [], [], []
+    lock = Lock()
+
+    def client_fn(client_idx, _sm=server_model, _sv=server_velocity):
+        loader    = data_utils.get_dataloader(client_datasets[client_idx])
+        model     = deepcopy(_sm)
+        dist      = get_label_distribution(loader)
+        data_size = len(client_datasets[client_idx])
+
+        if use_nag:
+            vel = deepcopy(_sv)
+            trained_model, trained_vel = train_with_NAG(model, loader, vel)
+            with lock:
+                models.append(trained_model)
+                velocities.append(trained_vel)
+        else:
+            trained_model = train(model, loader)
+            with lock:
+                models.append(trained_model)
+
+        with lock:
+            distributions.append(dist)
+            data_sizes.append(data_size)
+
+    threads = [Thread(target=client_fn, args=(c,)) for c in range(NUM_CLIENTS)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    return models, velocities, distributions, data_sizes
+
+
+# ---------------------------------------------------------------------------
+# Variant runner
+# ---------------------------------------------------------------------------
+
+def run_variant(name, use_nag, use_kl_weights, train_set, test_set):
+    """
+    Run one FL variant for TRAINING_ROUNDS rounds.
+
+    For variant 3 (plain SGD + KL weights) we call fed_wan with dummy zero
+    velocities and discard the returned velocity — the model aggregation path
+    inside fed_wan is identical to the FedWAN case.
+
+    Returns (final_accuracy, final_loss, total_time_s).
+    """
+    print(f"\n{'='*60}", flush=True)
+    print(f"  Variant : {name}", flush=True)
+    print(f"  NAG     : {use_nag}  |  KL weights: {use_kl_weights}", flush=True)
+    print(f"{'='*60}", flush=True)
+
+    client_datasets = data_utils.split_non_iid_class_proportional(
+        train_set, NUM_CLIENTS, NUM_CLASSES
+    )
+    test_loader = data_utils.get_dataloader(test_set)
+
+    server_model    = CNN(in_channels=1, num_classes=NUM_CLASSES, input_size=28).to(device)
+    server_velocity = {n: torch.zeros_like(p) for n, p in server_model.named_parameters()}
+
+    start_time = time.time()
+    final_acc, final_loss = 0.0, 0.0
+
+    for rnd in range(TRAINING_ROUNDS):
+        models, velocities, distributions, data_sizes = run_round(
+            server_model, server_velocity, client_datasets, use_nag
+        )
+
+        if use_nag and use_kl_weights:
+            # FedWAN: NAG + KL-weighted aggregation
+            server_model, server_velocity, _, _ = fed_wan(
+                models, velocities, distributions, rnd, NUM_CLIENTS
+            )
+
+        elif use_nag:
+            # FedAvg + NAG: NAG + uniform aggregation
+            server_model, server_velocity, _ = fed_momentum_nag(models, velocities)
+
+        elif use_kl_weights:
+            # FedAvg + KL weights: plain SGD + KL-weighted aggregation.
+            # fed_wan needs velocity lists — supply dummy zeros and discard result.
+            dummy_velocities = [
+                {n: torch.zeros_like(p) for n, p in server_model.named_parameters()}
+                for _ in models
+            ]
+            server_model, _, _, _ = fed_wan(
+                models, dummy_velocities, distributions, rnd, NUM_CLIENTS
+            )
+
+        else:
+            # Vanilla FedAvg: plain SGD + uniform aggregation
+            server_model = fed_avg(models)
+
+        acc, loss = test(server_model, test_loader)
+        elapsed   = time.time() - start_time
+        print(
+            f"  Round {rnd+1:2d}/{TRAINING_ROUNDS} | "
+            f"Acc: {acc:.4f}  Loss: {loss:.4f}  Elapsed: {elapsed:.1f}s",
+            flush=True,
+        )
+        final_acc, final_loss = acc, loss
+
+    return final_acc, final_loss, time.time() - start_time
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+VARIANTS = [
+    # (display name,           use_nag, use_kl_weights)
+    ("Vanilla FedAvg",         False,   False),
+    ("FedAvg + NAG",           True,    False),
+    ("FedAvg + KL weights",    False,   True),
+    ("FedWAN",                 True,    True),
+]
+
+if __name__ == "__main__":
+    print("Loading MNIST ...", flush=True)
+    train_set = data_utils.load_mnist_dataset(isTrainDataset=True)
+    test_set  = data_utils.load_mnist_dataset(isTrainDataset=False)
+
+    results = []
+    for name, use_nag, use_kl in VARIANTS:
+        acc, loss, t = run_variant(name, use_nag, use_kl, train_set, test_set)
+        results.append((name, use_nag, use_kl, acc, loss, t))
+
+    # ------------------------------------------------------------------
+    # Save to CSV
+    # ------------------------------------------------------------------
+    csv_path = os.path.join(output_dir, "ablation_results.csv")
+    with open(csv_path, mode='w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["fl_variant", "nag", "agg_weights", "final_accuracy", "final_loss", "time_s"])
+        for name, use_nag, use_kl, acc, loss, t in results:
+            writer.writerow([
+                name,
+                "Yes" if use_nag else "No",
+                "KL-weighted" if use_kl else "Uniform",
+                round(acc, 6),
+                round(loss, 6),
+                round(t, 2),
+            ])
+    print(f"\nResults saved to: {csv_path}", flush=True)
+
+    # ------------------------------------------------------------------
+    # Print summary table
+    # ------------------------------------------------------------------
+    col_w   = [24, 5, 13, 11, 11, 10]
+    headers = ["FL Variant", "NAG", "Agg Weights", "Final Acc", "Final Loss", "Time (s)"]
+
+    def fmt_row(cells):
+        return "  ".join(str(c).ljust(w) for c, w in zip(cells, col_w))
+
+    sep = "-" * (sum(col_w) + 2 * (len(col_w) - 1))
+
+    print(f"\n\n{'='*len(sep)}", flush=True)
+    print("ABLATION STUDY  —  MNIST | 5 clients | proportional Non-IID | 15 rounds",
+          flush=True)
+    print(f"{'='*len(sep)}", flush=True)
+    print(fmt_row(headers), flush=True)
+    print(sep, flush=True)
+
+    for name, use_nag, use_kl, acc, loss, t in results:
+        print(fmt_row([
+            name,
+            "Yes" if use_nag else "No",
+            "KL-weighted" if use_kl else "Uniform",
+            f"{acc:.4f}",
+            f"{loss:.4f}",
+            f"{t:.1f}",
+        ]), flush=True)
+
+    print(f"{'='*len(sep)}\n", flush=True)
