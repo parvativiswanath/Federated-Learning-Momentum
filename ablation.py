@@ -7,16 +7,20 @@ Isolates the contribution of each component by running four variants:
   3. FedAvg + KL weights  -- plain SGD clients,  KL-weighted aggregation
   4. FedWAN               -- NAG clients,         KL-weighted aggregation
 
-Reuses fed_avg / fed_momentum_nag / fed_wan / get_label_distribution
-from federated.py, and train / train_with_NAG / test from model/train.py.
+Each variant is run on every (dataset, split) combination:
+  Datasets : mnist, emnist_bymerge
+  Splits   : proportional, dirichlet
 
-Settings: MNIST, 5 clients, full participation, proportional Non-IID split,
-          15 rounds (matching the main federated.py default).
+Total runs: 4 variants × 2 datasets × 2 splits × 2 models = 32 runs.
+
+Reuses fed_avg / fed_momentum_nag / fed_wan / get_label_distribution /
+DATASET_CONFIGS from federated.py, and train / train_with_NAG / test from
+model/train.py.
 
 Output
 ------
 - Console: per-round progress + final summary table
-- ablation_results.csv: one row per variant with final metrics
+- ablation_results.csv: one row per (variant, dataset, split, model)
 """
 
 import csv
@@ -28,16 +32,17 @@ from threading import Thread, Lock
 import torch
 
 from dataset import data_utils
-from model.layers import CNN
+from model.layers import CNN, DNN
 from model.train import train, train_with_NAG, test
 
-# Import aggregation helpers directly from federated.py
+# Import aggregation helpers and config from federated.py
 from federated import (
     fed_avg,
     fed_momentum_nag,
     fed_wan,
     get_label_distribution,
     client_data_sizes as fed_client_data_sizes,
+    DATASET_CONFIGS,
     device,
     output_dir,
 )
@@ -47,14 +52,21 @@ from federated import (
 # ---------------------------------------------------------------------------
 TRAINING_ROUNDS = 15
 NUM_CLIENTS     = 5
-NUM_CLASSES     = 10
+DATASETS        = ['mnist', 'emnist_bymerge']
+SPLITS          = ['proportional', 'dirichlet']
+MODELS          = ['cnn', 'dnn']
+
+VARIANTS = [
+    # (display name,           use_nag, use_kl_weights)
+    ("Vanilla FedAvg",         False,   False),
+    ("FedAvg + NAG",           True,    False),
+    ("FedAvg + KL weights",    False,   True),
+    ("FedWAN",                 True,    True),
+]
 
 # ---------------------------------------------------------------------------
 # Per-round client runner
 # ---------------------------------------------------------------------------
-# The client_training_* functions in federated.py mutate module-level globals,
-# so we drive a clean local loop here.  All training and aggregation calls are
-# delegated to the imported functions above.
 
 def run_round(server_model, server_velocity, client_datasets, use_nag):
     """
@@ -64,7 +76,7 @@ def run_round(server_model, server_velocity, client_datasets, use_nag):
     -------
     models        : list of trained client models
     velocities    : list of client velocities (empty list when use_nag=False)
-    distributions : list of label-count dicts (always collected)
+    distributions : list of label-count dicts
     data_sizes    : list of dataset sizes per client
     """
     models, velocities, distributions, data_sizes = [], [], [], []
@@ -101,30 +113,76 @@ def run_round(server_model, server_velocity, client_datasets, use_nag):
 
 
 # ---------------------------------------------------------------------------
+# Model builder
+# ---------------------------------------------------------------------------
+
+def build_model(cfg, model_type):
+    if model_type == 'cnn':
+        return CNN(
+            in_channels=cfg['in_channels'],
+            num_classes=cfg['num_classes'],
+            input_size=cfg['input_size'],
+        ).to(device)
+    else:
+        return DNN(
+            in_channels=cfg['in_channels'],
+            num_classes=cfg['num_classes'],
+            input_size=cfg['input_size'],
+        ).to(device)
+
+
+# ---------------------------------------------------------------------------
 # Variant runner
 # ---------------------------------------------------------------------------
 
-def run_variant(name, use_nag, use_kl_weights, train_set, test_set):
-    """
-    Run one FL variant for TRAINING_ROUNDS rounds.
+def checkpoint_path(name, dataset, split, model_type):
+    ckpt_dir = os.path.join(output_dir, "checkpoints")
+    os.makedirs(ckpt_dir, exist_ok=True)
+    tag = name.lower().replace(" ", "_").replace("+", "plus")
+    filename = f"ablation_{tag}_{dataset}_{split}_{model_type}.pt"
+    return os.path.join(ckpt_dir, filename)
 
-    For variant 3 (plain SGD + KL weights) we call fed_wan with dummy zero
-    velocities and discard the returned velocity — the model aggregation path
-    inside fed_wan is identical to the FedWAN case.
+
+def run_variant(name, use_nag, use_kl_weights, dataset, split, model_type, train_set, test_set):
+    """
+    Run one FL variant for TRAINING_ROUNDS rounds on a given dataset and split.
+
+    If a checkpoint already exists for this (name, dataset, split, model_type)
+    combination, training is skipped and the saved metrics are returned directly.
+
+    For "FedAvg + KL weights" (plain SGD + KL aggregation) we call fed_wan
+    with dummy zero velocities and discard the returned velocity.
 
     Returns (final_accuracy, final_loss, total_time_s).
     """
-    print(f"\n{'='*60}", flush=True)
+    ckpt_path = checkpoint_path(name, dataset, split, model_type)
+
+    print(f"\n{'='*65}", flush=True)
     print(f"  Variant : {name}", flush=True)
+    print(f"  Dataset : {dataset}  |  Split: {split}  |  Model: {model_type.upper()}", flush=True)
     print(f"  NAG     : {use_nag}  |  KL weights: {use_kl_weights}", flush=True)
-    print(f"{'='*60}", flush=True)
+    print(f"{'='*65}", flush=True)
 
-    client_datasets = data_utils.split_non_iid_class_proportional(
-        train_set, NUM_CLIENTS, NUM_CLASSES
-    )
-    test_loader = data_utils.get_dataloader(test_set)
+    # Resume from checkpoint if available
+    if os.path.exists(ckpt_path):
+        print(f"  [checkpoint found] Loading from {ckpt_path}", flush=True)
+        ckpt = torch.load(ckpt_path, map_location=device)
+        return ckpt['final_acc'], ckpt['final_loss'], ckpt['total_time_s']
 
-    server_model    = CNN(in_channels=1, num_classes=NUM_CLASSES, input_size=28).to(device)
+    cfg         = DATASET_CONFIGS[dataset]
+    num_classes = cfg['num_classes']
+
+    if split == 'dirichlet':
+        client_datasets = data_utils.split_non_iid_dirichlet(
+            train_set, NUM_CLIENTS, num_classes
+        )
+    else:
+        client_datasets = data_utils.split_non_iid_class_proportional(
+            train_set, NUM_CLIENTS, num_classes
+        )
+
+    test_loader     = data_utils.get_dataloader(test_set)
+    server_model    = build_model(cfg, model_type)
     server_velocity = {n: torch.zeros_like(p) for n, p in server_model.named_parameters()}
 
     start_time = time.time()
@@ -149,7 +207,7 @@ def run_variant(name, use_nag, use_kl_weights, train_set, test_set):
 
         elif use_kl_weights:
             # FedAvg + KL weights: plain SGD + KL-weighted aggregation.
-            # fed_wan needs velocity lists — supply dummy zeros and discard result.
+            # fed_wan requires velocity lists — supply dummy zeros, discard result.
             fed_client_data_sizes.clear()
             fed_client_data_sizes.extend(data_sizes)
             dummy_velocities = [
@@ -173,41 +231,59 @@ def run_variant(name, use_nag, use_kl_weights, train_set, test_set):
         )
         final_acc, final_loss = acc, loss
 
-    return final_acc, final_loss, time.time() - start_time
+    total_time = time.time() - start_time
+    torch.save({
+        'model_state_dict': server_model.state_dict(),
+        'final_acc':        final_acc,
+        'final_loss':       final_loss,
+        'total_time_s':     total_time,
+        'variant':          name,
+        'dataset':          dataset,
+        'split':            split,
+        'model_type':       model_type,
+    }, ckpt_path)
+    print(f"  [checkpoint saved] {ckpt_path}", flush=True)
+    return final_acc, final_loss, total_time
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
-VARIANTS = [
-    # (display name,           use_nag, use_kl_weights)
-    ("Vanilla FedAvg",         False,   False),
-    ("FedAvg + NAG",           True,    False),
-    ("FedAvg + KL weights",    False,   True),
-    ("FedWAN",                 True,    True),
-]
-
 if __name__ == "__main__":
-    print("Loading MNIST ...", flush=True)
-    train_set = data_utils.load_mnist_dataset(isTrainDataset=True)
-    test_set  = data_utils.load_mnist_dataset(isTrainDataset=False)
+    results = []  # (variant, dataset, split, model_type, use_nag, use_kl, acc, loss, time)
 
-    results = []
-    for name, use_nag, use_kl in VARIANTS:
-        acc, loss, t = run_variant(name, use_nag, use_kl, train_set, test_set)
-        results.append((name, use_nag, use_kl, acc, loss, t))
+    for dataset in DATASETS:
+        cfg = DATASET_CONFIGS[dataset]
+        print(f"\n{'#'*65}", flush=True)
+        print(f"  Loading dataset: {dataset}", flush=True)
+        print(f"{'#'*65}", flush=True)
+        train_set = cfg['load_train']()
+        test_set  = cfg['load_test']()
+
+        for split in SPLITS:
+            for model_type in MODELS:
+                for name, use_nag, use_kl in VARIANTS:
+                    acc, loss, t = run_variant(
+                        name, use_nag, use_kl,
+                        dataset, split, model_type,
+                        train_set, test_set,
+                    )
+                    results.append((name, dataset, split, model_type, use_nag, use_kl, acc, loss, t))
 
     # ------------------------------------------------------------------
-    # Save to CSV
+    # Save combined CSV
     # ------------------------------------------------------------------
     csv_path = os.path.join(output_dir, "ablation_results.csv")
     with open(csv_path, mode='w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["fl_variant", "nag", "agg_weights", "final_accuracy", "final_loss", "time_s"])
-        for name, use_nag, use_kl, acc, loss, t in results:
+        writer.writerow([
+            "fl_variant", "dataset", "split", "model", "nag", "agg_weights",
+            "final_accuracy", "final_loss", "time_s",
+        ])
+        for name, dataset, split, model_type, use_nag, use_kl, acc, loss, t in results:
             writer.writerow([
-                name,
+                name, dataset, split, model_type.upper(),
                 "Yes" if use_nag else "No",
                 "KL-weighted" if use_kl else "Uniform",
                 round(acc, 6),
@@ -217,7 +293,7 @@ if __name__ == "__main__":
     print(f"\nResults saved to: {csv_path}", flush=True)
 
     # ------------------------------------------------------------------
-    # Print summary table
+    # Print summary table (grouped by dataset + split)
     # ------------------------------------------------------------------
     col_w   = [24, 5, 13, 11, 11, 10]
     headers = ["FL Variant", "NAG", "Agg Weights", "Final Acc", "Final Loss", "Time (s)"]
@@ -227,21 +303,32 @@ if __name__ == "__main__":
 
     sep = "-" * (sum(col_w) + 2 * (len(col_w) - 1))
 
-    print(f"\n\n{'='*len(sep)}", flush=True)
-    print("ABLATION STUDY  —  MNIST | 5 clients | proportional Non-IID | 15 rounds",
-          flush=True)
-    print(f"{'='*len(sep)}", flush=True)
-    print(fmt_row(headers), flush=True)
-    print(sep, flush=True)
+    for dataset in DATASETS:
+        for split in SPLITS:
+            for model_type in MODELS:
+                print(f"\n\n{'='*len(sep)}", flush=True)
+                print(
+                    f"  ABLATION RESULTS  |  dataset={dataset}  "
+                    f"split={split}  model={model_type.upper()}  "
+                    f"|  5 clients  |  15 rounds",
+                    flush=True,
+                )
+                print(f"{'='*len(sep)}", flush=True)
+                print(fmt_row(headers), flush=True)
+                print(sep, flush=True)
 
-    for name, use_nag, use_kl, acc, loss, t in results:
-        print(fmt_row([
-            name,
-            "Yes" if use_nag else "No",
-            "KL-weighted" if use_kl else "Uniform",
-            f"{acc:.4f}",
-            f"{loss:.4f}",
-            f"{t:.1f}",
-        ]), flush=True)
+                for name, ds, sp, mt, use_nag, use_kl, acc, loss, t in results:
+                    if ds != dataset or sp != split or mt != model_type:
+                        continue
+                    print(fmt_row([
+                        name,
+                        "Yes" if use_nag else "No",
+                        "KL-weighted" if use_kl else "Uniform",
+                        f"{acc:.4f}",
+                        f"{loss:.4f}",
+                        f"{t:.1f}",
+                    ]), flush=True)
 
-    print(f"{'='*len(sep)}\n", flush=True)
+                print(f"{'='*len(sep)}", flush=True)
+
+    print("", flush=True)
