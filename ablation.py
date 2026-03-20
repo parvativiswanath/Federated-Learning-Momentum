@@ -247,13 +247,21 @@ def run_variant(name, use_nag, use_kl_weights, dataset, split, model_type, train
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Main runner (importable by ablation1.py / ablation2.py)
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def run_ablation(datasets, csv_filename):
+    """
+    Run the full ablation over the given datasets and save results.
+
+    Parameters
+    ----------
+    datasets     : list of dataset names to run (subset of DATASETS)
+    csv_filename : name of the output CSV file (saved in output_dir)
+    """
     results = []  # (variant, dataset, split, model_type, use_nag, use_kl, acc, loss, time)
 
-    for dataset in DATASETS:
+    for dataset in datasets:
         cfg = DATASET_CONFIGS[dataset]
         print(f"\n{'#'*65}", flush=True)
         print(f"  Loading dataset: {dataset}", flush=True)
@@ -274,7 +282,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # Save combined CSV
     # ------------------------------------------------------------------
-    csv_path = os.path.join(output_dir, "ablation_results.csv")
+    csv_path = os.path.join(output_dir, csv_filename)
     with open(csv_path, mode='w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -293,7 +301,7 @@ if __name__ == "__main__":
     print(f"\nResults saved to: {csv_path}", flush=True)
 
     # ------------------------------------------------------------------
-    # Print summary table (grouped by dataset + split)
+    # Print summary table (grouped by dataset + split + model)
     # ------------------------------------------------------------------
     col_w   = [24, 5, 13, 11, 11, 10]
     headers = ["FL Variant", "NAG", "Agg Weights", "Final Acc", "Final Loss", "Time (s)"]
@@ -303,7 +311,7 @@ if __name__ == "__main__":
 
     sep = "-" * (sum(col_w) + 2 * (len(col_w) - 1))
 
-    for dataset in DATASETS:
+    for dataset in datasets:
         for split in SPLITS:
             for model_type in MODELS:
                 print(f"\n\n{'='*len(sep)}", flush=True)
@@ -332,3 +340,11 @@ if __name__ == "__main__":
                 print(f"{'='*len(sep)}", flush=True)
 
     print("", flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Entry point — runs all datasets in one go
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    run_ablation(DATASETS, "ablation_results.csv")
